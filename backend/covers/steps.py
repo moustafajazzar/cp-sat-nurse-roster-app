@@ -180,7 +180,7 @@ def accept(user: User, cover_id: UUID, request: HttpRequest) -> Cover:
     record("cover.accepted", actor=user, target=user.username, request=request)
     try:
         version = in_force.change(held, [Change(user.username, cover.date, cover.shift.code)], origin=in_force.Origin.COVER,
-                                  by=user, why=f"Cover taken by {name_of(user)}: {which(cover)}.", pins=1, request=request)
+                                  by=user, reason=f"Cover taken by {name_of(user)}: {which(cover)}.", pins=1, request=request)
     except in_force.Refused as refused:
         raise HttpError(409, str(refused)) from None
     if version is in_force.UNCHANGED:

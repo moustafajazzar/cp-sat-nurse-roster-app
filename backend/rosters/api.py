@@ -45,7 +45,7 @@ ONLY_APPROVERS = "Only the CNO or the Deputy CNO approve or reject a roster."
 SAVED_AS_A_VERSION = "This roster is approved, so a change to it is saved as a new version in force at once, with a reason."
 NOTHING_CHANGED = ("These changes leave every cell of the roster in force as it is, so there is no new version to save. Discard "
                    "them, or change a cell.")
-NOT_APPROVED = "This roster is not approved yet, so its changes are saved as pins on the draft, with no version or reason."
+SAVED_AS_PINS = "This roster is not approved yet, so its changes are saved as pins on the draft, with no version or reason."
 
 
 class DraftChange(Schema):
@@ -474,13 +474,13 @@ def save_version(request: HttpRequest, unit_id: UUID, body: VersionBody) -> Rost
         # then refuses nothing. A manager working on a draft or a submitted roster is told what she can do with it instead.
         refused = held.refusal()
         if isinstance(refused, in_force.NotApproved):
-            raise HttpError(409, _why_not_edit(roster, request.user) or NOT_APPROVED)
+            raise HttpError(409, _why_not_edit(roster, request.user) or SAVED_AS_PINS)
         if refused:
             raise HttpError(409, str(refused))
         editing = _judged(roster, edits)
         pins = editing.save_pins(edits, request.user)
-        made = in_force.change(held, _cells(editing, edits), origin=in_force.Origin.EDIT, by=request.user, why=reason, pins=pins,
-                               request=request)
+        made = in_force.change(held, _cells(editing, edits), origin=in_force.Origin.EDIT, by=request.user, reason=reason,
+                               pins=pins, request=request)
         if made is in_force.UNCHANGED:
             # Raised inside the transaction, so the pins saved above go with it.
             raise HttpError(409, NOTHING_CHANGED)

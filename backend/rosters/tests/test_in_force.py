@@ -50,12 +50,12 @@ def manager() -> User:
     return User.objects.get(username="mona")
 
 
-def changing(unit, *cells: Change, origin=in_force.Origin.EDIT, by=None, why="Amal covers Night on the 9th.", pins=None,
+def changing(unit, *cells: Change, origin=in_force.Origin.EDIT, by=None, reason="Amal covers Night on the 9th.", pins=None,
              **extra):
     """Holds the month for the cells' nurses and changes them, as an origin does, all in one transaction."""
     with transaction.atomic():
         held = in_force.hold(unit.pk, JUNE, nurses={cell.hospital_id for cell in cells})
-        return in_force.change(held, list(cells), origin=origin, by=by or manager(), why=why,
+        return in_force.change(held, list(cells), origin=origin, by=by or manager(), reason=reason,
                                pins=len(cells) if pins is None else pins, **extra)
 
 
@@ -81,7 +81,7 @@ class TestVersions:
         approved_grid = versions(june)[0].grid
 
         changing(er, Change("Amal", day(9), "N"))
-        changing(er, Change("Badr", day(2), None), why="Badr asked for the 2nd off.")
+        changing(er, Change("Badr", day(2), None), reason="Badr asked for the 2nd off.")
 
         assert [version.number for version in versions(june)] == [1, 2, 3]
         assert versions(june)[0].grid == approved_grid
@@ -103,7 +103,7 @@ class TestVersions:
         with transaction.atomic():
             held = in_force.hold(er.pk, JUNE, nurses={"Badr"})
             with pytest.raises(ValueError, match="Amal was not held"):
-                in_force.change(held, [Change("Amal", day(9), "N")], origin=in_force.Origin.EDIT, by=manager(), why="", pins=0)
+                in_force.change(held, [Change("Amal", day(9), "N")], origin=in_force.Origin.EDIT, by=manager(), reason="", pins=0)
 
 
 def roster_changed_entries() -> list[AuditEntry]:
@@ -139,14 +139,14 @@ class TestAuditEntry:
         assert versions(june)[-1].origin == origin
 
     def test_it_never_says_why_or_whose_cells(self, er, june):
-        changing(er, Change("Amal", day(9), "N"), why="Amal covers for Badr, who is sick.")
+        changing(er, Change("Amal", day(9), "N"), reason="Amal covers for Badr, who is sick.")
 
         [entry] = roster_changed_entries()
         assert "Amal" not in str([entry.target, entry.before, entry.after]) and "sick" not in str(entry.after)
 
     def test_leave_writes_none_and_its_version_is_stored_as_an_edit(self, er, june):
         changing(er, Change("Badr", day(9), None), origin=in_force.Origin.LEAVE, pins=0,
-                 why="Leave recorded for Badr took their shift off 9 June.")
+                 reason="Leave recorded for Badr took their shift off 9 June.")
 
         assert roster_changed_entries() == []
         assert versions(june)[-1].origin == "edit"
@@ -165,7 +165,7 @@ class TestAuditEntry:
             held = in_force.hold(er.pk, JUNE, nurses={"Amal"})
             record("request.accepted", actor=manager(), target="Amal")
             in_force.change(held, [Change("Amal", day(9), "N")], origin=in_force.Origin.REQUEST, by=manager(),
-                            why="Amal's request for Night (N) on 9 June 2026 accepted.", pins=1)
+                            reason="Amal's request for Night (N) on 9 June 2026 accepted.", pins=1)
 
         assert [(entry.action, entry.target, entry.after) for entry in AuditEntry.objects.order_by("id")][-2:] == [
             ("request.accepted", "Amal", None), ("roster.changed", "ER, 2026-06", {"version": 2, "pins": 1, "cells": 1})]
@@ -174,7 +174,7 @@ class TestAuditEntry:
 
 class TestWhoIsTold:
     def test_every_nurse_of_the_month_is_told_with_no_reason_cell_or_name(self, er, june):
-        changing(er, Change("Amal", day(9), "N"), why="Amal covers for Badr, who is sick.")
+        changing(er, Change("Amal", day(9), "N"), reason="Amal covers for Badr, who is sick.")
 
         assert told_of_a_change() == {"Amal", "Badr", "Dana", "Emad"}
         for note in Notification.objects.filter(event=Event.ROSTER_CHANGED):
@@ -223,7 +223,7 @@ class TestRefusals:
             held = in_force.hold(er.pk, JUNE, nurses={"Amal"})
             assert isinstance(held.refusal(), in_force.NotApproved) and held.roster.state == RosterState.DRAFT
             with pytest.raises(in_force.NotApproved, match="not approved"):
-                in_force.change(held, [Change("Amal", day(9), "N")], origin=in_force.Origin.EDIT, by=manager(), why="",
+                in_force.change(held, [Change("Amal", day(9), "N")], origin=in_force.Origin.EDIT, by=manager(), reason="",
                                 pins=1)
 
         assert [version.number for version in versions(june)] == [1] and roster_changed_entries() == []
@@ -233,7 +233,7 @@ class TestRefusals:
             held = in_force.hold(er.pk, JUNE, nurses={"Amal"})
             assert held.roster is None and held.unit == er
             with pytest.raises(in_force.NotApproved):
-                in_force.change(held, [Change("Amal", day(9), "N")], origin=in_force.Origin.EDIT, by=manager(), why="",
+                in_force.change(held, [Change("Amal", day(9), "N")], origin=in_force.Origin.EDIT, by=manager(), reason="",
                                 pins=1)
 
     def test_a_month_that_is_over_is_refused_in_one_sentence(self, er, june, monkeypatch):
@@ -256,7 +256,7 @@ def changing_the_whole_month(unit, *cells: Change):
     """As a re-plan's end changes the month: holding every nurse of it."""
     with transaction.atomic():
         held = in_force.hold(unit.pk, JUNE, nurses=in_force.WHOLE_MONTH)
-        return in_force.change(held, list(cells), origin=in_force.Origin.REPLAN, by=manager(), why="Re-planned.", pins=0)
+        return in_force.change(held, list(cells), origin=in_force.Origin.REPLAN, by=manager(), reason="Re-planned.", pins=0)
 
 
 @pytest.fixture
@@ -316,7 +316,7 @@ def taking_off(unit, hospital_id: str, *days: dt.date) -> list:
         for held in in_force.hold_for_leave(unit.pk, {day.replace(day=1) for day in days}, nurse=hospital_id):
             cells = [Change(hospital_id, day, None) for day in days if day.replace(day=1) == held.month]
             made.append(in_force.change(held, cells, origin=in_force.Origin.LEAVE, by=manager(), pins=0,
-                                        why=f"Leave recorded for {hospital_id} took their shift off."))
+                                        reason=f"Leave recorded for {hospital_id} took their shift off."))
         return made
 
 

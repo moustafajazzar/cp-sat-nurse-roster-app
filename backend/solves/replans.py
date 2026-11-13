@@ -84,8 +84,8 @@ def finish(solve: Solve, result: dict | None, state: SolveState) -> SolveOutcome
     latest = roster.versions.first() if held.approved else None
     if latest is None or latest.number != solve.replan_of or changes_since(solve.input, solve.unit, solve.month):
         return _ended(solve, ReplanOutcome.OUTDATED, SolveOutcome.REPLAN_OUTDATED)
-    made = in_force.change(held, _cells_changed(roster.grid, in_current_codes(result["roster"])), origin=in_force.Origin.REPLAN,
-                           by=solve.requested_by, why=reason_for(solve), pins=0, solve=solve)
+    made = in_force.change(held, _new_cells(roster.grid, in_current_codes(result["roster"])), origin=in_force.Origin.REPLAN,
+                           by=solve.requested_by, reason=reason_for(solve), pins=0, solve=solve)
     if made is in_force.UNCHANGED:
         return _ended(solve, ReplanOutcome.UNCHANGED, SolveOutcome.REPLAN_UNCHANGED)
     # The grid is this solve's now: clearing a pin gives a cell back to it, and the page's details are its.
@@ -94,7 +94,7 @@ def finish(solve: Solve, result: dict | None, state: SolveState) -> SolveOutcome
     return _ended(solve, ReplanOutcome.VERSION, SolveOutcome.STOPPED_REPLANNED if stopped else SolveOutcome.REPLANNED)
 
 
-def _cells_changed(in_force_grid: dict[str, dict[str, str]], grid: dict[str, dict[str, str]]) -> list[Change]:
+def _new_cells(in_force_grid: dict[str, dict[str, str]], grid: dict[str, dict[str, str]]) -> list[Change]:
     """The re-plan's grid as the cells it changes. Its rows are the month's nurses, which the whole-month hold makes the rows of
     the version: a nurse it has no row for has left the month and loses hers there, so she has no cell here."""
     return [Change(nurse, dt.date.fromisoformat(day), code or None)

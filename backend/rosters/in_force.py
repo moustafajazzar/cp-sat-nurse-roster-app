@@ -239,8 +239,8 @@ def _grid_after(held: Held, cells: Iterable[Change]) -> dict[str, dict[str, str]
     return grid
 
 
-def change(held: Held, cells: Iterable[Change], *, origin: Origin, by: User, why: str, pins: int, solve: Solve | None = None,
-           request: HttpRequest | None = None) -> RosterVersion | Unchanged:
+def change(held: Held, cells: Iterable[Change], *, origin: Origin, by: User, reason: str, pins: int,
+           solve: Solve | None = None, request: HttpRequest | None = None) -> RosterVersion | Unchanged:
     """Changes the roster in force held by `held`: the next version, or `UNCHANGED` when no cell differs. `pins` is how many
     pins the origin made or ended for it, for the audit entry; `solve` the one the grid came from, if any; `request` the HTTP
     request that asked, if any, whose client address the audit entry keeps. Refuses (`Refused`) a roster that is not approved
@@ -257,7 +257,7 @@ def change(held: Held, cells: Iterable[Change], *, origin: Origin, by: User, why
     if not changed:
         return UNCHANGED
     before = roster.versions.first().grid
-    version = _make_version(roster, grid, policy.stored, by, why, solve=solve)
+    version = _make_version(roster, grid, policy.stored, by, reason, solve=solve)
     expire_swaps(roster, before, grid)
     fill_covers(roster, before, grid, policy.stored)
     if policy.audited:

@@ -313,7 +313,7 @@ def take_off_for_leave(nurse: NurseProfile, unit: Unit, days: Iterable[dt.date],
         name = nurse.user.full_name or hospital_id
         reason = f"Leave recorded for {name} took their shift off {', '.join(long_date(day) for day, _ in off)}."
         version = in_force.change(held, [Change(hospital_id, day, None) for day, _ in off], origin=in_force.Origin.LEAVE,
-                                  by=by, why=reason, pins=0)
+                                  by=by, reason=reason, pins=0)
         taken.append(TakenOff(held.roster, version, off, opening.for_leave(held.roster, version, off)))
     return taken
 

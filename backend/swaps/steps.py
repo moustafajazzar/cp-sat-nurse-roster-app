@@ -2,10 +2,10 @@
 unit's manager. Each refusal, then the write, the audit entry and whoever is told; call each inside a transaction.
 
 A proposal and a manager's decision hold the unit's month as every change to the roster in force does (`rosters.in_force.hold`,
-and for a proposal the unit its proposer is in), then lock the swap's row, so neither passes a leave write or a version between its check and its write.
-An approval's version goes in force through `rosters.in_force.change`, which tells the unit's nurses and writes the roster-change
-entry. A colleague's answer and a withdrawal change nothing on the roster and take the swap's row lock alone, which nothing holds
-while waiting on another lock, so none of them waits in a circle.
+and for a proposal the unit its proposer is in), then lock the swap's row, so neither passes a leave write or a version between
+its check and its write. An approval's version goes in force through `rosters.in_force.change`, which tells the unit's nurses and
+writes the roster-change entry. A colleague's answer and a withdrawal change nothing on the roster and take the swap's row lock
+alone, which nothing holds while waiting on another lock, so none of them waits in a circle.
 
 The audit log says a swap moved and whose (the proposer's): never its cells, its dates, a note or a reason."""
 from __future__ import annotations
@@ -220,7 +220,7 @@ def approve(held: in_force.Held, swap: Swap, by: User, reason: str, request: Htt
     # The swap's own entry first, then the roster-change entry the change writes.
     record("swap.approved", actor=by, target=swap.proposer.user.username, request=request)
     try:
-        version = in_force.change(held, changes, origin=in_force.Origin.SWAP, by=by, why=reason_for_version, pins=len(cells),
+        version = in_force.change(held, changes, origin=in_force.Origin.SWAP, by=by, reason=reason_for_version, pins=len(cells),
                                   request=request)
     except in_force.Refused as refused:
         raise HttpError(409, str(refused)) from None

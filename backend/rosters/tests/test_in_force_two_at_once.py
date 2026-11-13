@@ -47,11 +47,11 @@ def june(er) -> Roster:
     return approved_roster(er)
 
 
-def changed(unit, *cells: Change, why="A change.") -> object:
+def changed(unit, *cells: Change, reason="A change.") -> object:
     with transaction.atomic():
         held = in_force.hold(unit.pk, JUNE, nurses={cell.hospital_id for cell in cells})
-        return in_force.change(held, list(cells), origin=in_force.Origin.EDIT, by=User.objects.get(username="mona"), why=why,
-                               pins=0)
+        return in_force.change(held, list(cells), origin=in_force.Origin.EDIT, by=User.objects.get(username="mona"),
+                               reason=reason, pins=0)
 
 
 def held_for(unit, nurses) -> None:
@@ -82,7 +82,7 @@ def test_of_two_changes_at_once_the_second_waits_and_is_the_next_version_built_o
     takes, and reads the roster only once the first has committed."""
     with transaction.atomic():
         changed(er, Change("Amal", dt.date(2026, 6, 9), "N"))
-        second = alongside(pool, lambda: changed(er, Change("Badr", dt.date(2026, 6, 2), None), why="Badr asked."))
+        second = alongside(pool, lambda: changed(er, Change("Badr", dt.date(2026, 6, 2), None), reason="Badr asked."))
         assert not second.done()
 
     assert second.result().number == 3
@@ -185,7 +185,7 @@ class TestAReplansEnd:
     def test_an_edit_waits_for_it_and_builds_on_its_version(self, er, under_way, pool):
         with transaction.atomic():
             running.run(under_way)
-            edit = alongside(pool, lambda: changed(er, Change("Badr", dt.date(2026, 6, 20), "D"), why="Badr asked."))
+            edit = alongside(pool, lambda: changed(er, Change("Badr", dt.date(2026, 6, 20), "D"), reason="Badr asked."))
             assert not edit.done()
 
         assert edit.result().number == 3

@@ -115,7 +115,7 @@ def _onto_roster(decision: Decision, shift: Shift | None, by: User, reason: str,
             roster.save(update_fields=["grid"])  # `updated_at` stays, as for a hand edit.
         return None
     made = in_force.change(decision.held, [Change(hospital_id, decision.request.date, code or None)],
-                           origin=in_force.Origin.REQUEST, by=by, why=reason, pins=1, request=request)
+                           origin=in_force.Origin.REQUEST, by=by, reason=reason, pins=1, request=request)
     return None if made is in_force.UNCHANGED else made
 
 

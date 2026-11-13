@@ -525,7 +525,7 @@ class TestAChangeWhileItWaitsOrRuns:
         def a_change_with_nothing_else():
             held = hold(er.pk, dt.date(2026, 6, 1), nurses={"Badr"})
             return change_in_force(held, [Change("Badr", dt.date(2026, 6, 20), "D")], origin=Origin.SWAP,
-                                   by=User.objects.get(username="mona"), why="A swap.", pins=0)
+                                   by=User.objects.get(username="mona"), reason="A swap.", pins=0)
         while_it_runs(solver, a_change_with_nothing_else)
 
         solve = replanned(mona, er, solver, *under_way(SWAPPED))
