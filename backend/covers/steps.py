@@ -6,9 +6,9 @@ and whoever is told; call each inside a transaction.
 An acceptance changes the roster in force, so it holds the unit's month as every such change does (`rosters.in_force.hold`)
 and then locks the cover's row, and no leave write or version passes between its check and its write; its version goes in force
 through `rosters.in_force.change`, which tells the unit's nurses and writes the roster-change entry. An offer, a decline and a
-withdrawal change nothing on the roster and take the cover's row lock alone, which nothing holds while waiting on another lock, so none of them waits in a
-circle. The rows they write refer to nurses and users, whose locks are all `FOR NO KEY UPDATE`, so the checks of those foreign
-keys at commit wait on nothing.
+withdrawal change nothing on the roster and take the cover's row lock alone, which nothing holds while waiting on another lock,
+so none of them waits in a circle. The rows they write refer to nurses and users, whose locks are all `FOR NO KEY UPDATE`, so the
+checks of those foreign keys at commit wait on nothing.
 
 The audit log says a cover moved and by whom: `cover.offered` and `cover.withdrawn` (the manager, the unit as target),
 `cover.accepted` and `cover.declined` (the nurse, her hospital ID as target), never its date, shift or note."""

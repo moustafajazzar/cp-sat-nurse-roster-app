@@ -45,6 +45,7 @@ ONLY_APPROVERS = "Only the CNO or the Deputy CNO approve or reject a roster."
 SAVED_AS_A_VERSION = "This roster is approved, so a change to it is saved as a new version in force at once, with a reason."
 NOTHING_CHANGED = ("These changes leave every cell of the roster in force as it is, so there is no new version to save. Discard "
                    "them, or change a cell.")
+NO_DRAFT = "This month has no draft yet. Solve it first."
 SAVED_AS_PINS = "This roster is not approved yet, so its changes are saved as pins on the draft, with no version or reason."
 
 
@@ -360,9 +361,6 @@ def _refuse_nonsense(body: EditsBody) -> list[Edit]:
     return edits
 
 
-NO_DRAFT = "This month has no draft yet. Solve it first."
-
-
 def _draft_of(unit: Unit, month: dt.date) -> Roster:
     roster = Roster.objects.select_related("solve", "unit").filter(unit=unit, month=month).first()
     if roster is None:
@@ -586,7 +584,7 @@ def submit_roster(request: HttpRequest, unit_id: UUID, body: MonthBody) -> Roste
         unit = unit_in_scope(request.user, unit_id, for_update=True)
         roster = _locked_roster(unit, month)
         if roster is None:
-            raise HttpError(409, "This month has no draft yet. Solve it first.")
+            raise HttpError(409, NO_DRAFT)
         refusal = review.why_not_submit(roster, check_saved(roster))
         if refusal:
             raise HttpError(409, refusal)

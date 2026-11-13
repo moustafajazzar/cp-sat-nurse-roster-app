@@ -181,7 +181,7 @@ def _the_months_nurses(unit: Unit, month: dt.date) -> frozenset[str]:
     return frozenset(nurse.user.username for nurse in membership.planned_in(unit, month)[0])
 
 
-def hold_for_leave(unit_id, months: Iterable[dt.date], *, nurse: str) -> list[Held]:
+def hold_for_leave(unit_id: UUID, months: Iterable[dt.date], *, nurse: str) -> list[Held]:
     """Leave's own, narrower hold: each of these months of the unit, in month order, for taking one nurse's (hospital ID)
     shifts off. Call it under her lock, which every leave write takes first. It takes no catalogue lock, so recording leave
     never waits on a solve or a rename there.
