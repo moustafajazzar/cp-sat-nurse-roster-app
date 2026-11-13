@@ -715,6 +715,45 @@ class TestAfterApproval:
         assert roster(er).versions.count() == 3
         assert roster(er).grid["Amal"]["2026-06-03"] == "D"
 
+    def test_accepting_a_change_to_a_cell_writes_the_roster_change_entry_after_its_own_as_a_swap_does(self, mona, carla, er,
+                                                                                                      solver):
+        approved(mona, carla, er, solver)
+        opened(mona, er)
+        made = asked(as_user("Amal"), 3)
+
+        decided(mona, er, made["id"], "accept")
+
+        entries = [(entry.action, entry.actor.username, entry.target, entry.after)
+                   for entry in AuditEntry.objects.order_by("id")][-2:]
+        assert entries == [("request.accepted", "mona", "Amal", None),
+                           ("roster.changed", "mona", "ER, 2026-06", {"version": 2, "pins": 1, "cells": 1})]
+        assert AuditEntry.objects.get(action="roster.changed").ip is not None
+
+    def test_editing_one_that_changes_a_cell_writes_it_too_and_what_changes_nothing_writes_none(self, mona, carla, er, solver):
+        """Amal is off on the 5th already."""
+        approved(mona, carla, er, solver)
+        opened(mona, er)
+        made = asked(as_user("Amal"), 3)
+        decided(mona, er, made["id"], "accept")
+        decided(mona, er, asked(as_user("Amal"), 5)["id"], "accept")
+
+        decided(mona, er, made["id"], "edit", shift="D", reason="Day instead.")
+
+        assert list(AuditEntry.objects.filter(action="roster.changed").order_by("id").values_list("after", flat=True)) == [
+            {"version": 2, "pins": 1, "cells": 1}, {"version": 3, "pins": 1, "cells": 1}]
+
+    def test_a_nurse_who_joined_after_the_solve_has_no_row_so_only_her_pin_is_made(self, mona, carla, er, solver, make_user):
+        approved(mona, carla, er, solver)
+        nurse_in(er, make_user, "Faris")
+        opened(mona, er)
+
+        answer = decided(mona, er, asked(as_user("Faris"), 3)["id"], "accept")
+
+        assert answer["version"] is None and roster(er).versions.count() == 1
+        assert "Faris" not in roster(er).grid
+        assert (current_pin("Faris", 3).code, current_pin("Faris", 3).origin) == ("", PinOrigin.REQUEST)
+        assert not AuditEntry.objects.filter(action="roster.changed").exists()
+
     def test_the_managers_editor_refuses_a_requests_pin(self, mona, carla, er, solver):
         approved(mona, carla, er, solver)
         opened(mona, er)

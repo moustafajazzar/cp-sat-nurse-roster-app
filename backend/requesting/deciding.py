@@ -1,7 +1,8 @@
 """The unit manager's decisions on a request: accept, reject, edit and cancel an accepted one, and leave replacing one. An
 accepted request is a pinned cell of origin `request`, refused where a pin would be, in the same words
-(`rosters.pins.Judge`), and put on the roster as a pin is: on a draft's cell at once, since a draft never disagrees with a pin, and on an approved roster
-of a month not over as a new version with origin `request`, when it changes a cell. A submitted roster is frozen, so a decision
+(`rosters.pins.Judge`), and put on the roster as a pin is: on a draft's cell at once, since a draft never disagrees with a pin, and
+on the roster in force of a month not over as a change of origin `request` (`rosters.in_force`), when it alters the cell. The pin
+is the request's own, made whether or not the cell changes. A submitted roster is frozen, so a decision
 that would move a pin waits for its decision. Call each inside a transaction under `locked_for_decision`."""
 from __future__ import annotations
 
@@ -17,19 +18,21 @@ from ninja.errors import HttpError
 
 from accounts.models import User
 from audit.log import record
-from hospital.models import HospitalSettings, Shift
+from hospital.models import Shift
 from notifications import sending
 from nurses import membership
 from nurses.models import NurseProfile
 from requesting.models import Request, RequestState, RequestStep, Step, what_of
+from rosters import in_force
+from rosters.approved import Change
 from rosters.drafts import FROZEN, current_code
-from rosters.models import PinEnded, PinnedCell, PinOrigin, Roster, RosterState, RosterVersion, VersionOrigin
+from rosters.models import PinEnded, PinnedCell, PinOrigin, Roster, RosterState, RosterVersion
 from rosters.pins import Judge, end, long_date, pin_cell
-from rosters.versions import make_version
 from units.models import Unit
 from units.scope import unit_in_scope
 
 MONTH_OVER = "This month is over, so its pins cannot change."
+NO_SUCH_REQUEST = "There is no such request in your unit."
 
 
 @dataclass
@@ -41,6 +44,7 @@ class Decision:
     nurse: NurseProfile
     request: Request
     roster: Roster | None
+    held: in_force.Held | None = None
 
     @property
     def month(self) -> dt.date:
@@ -52,24 +56,25 @@ class Decision:
 
 
 def locked_for_decision(user: User, unit_id: UUID, request_id: UUID) -> Decision:
-    """The locks a save of pins takes, in its order (`rosters.api._locked_for_edits`): the catalogue's, the nurse's `FOR NO KEY
-    UPDATE` (which a leave write holds) and the unit's; then the request's, so two clicks on Accept cannot both find it
-    pending, and the month's roster. Every write to a request holds its nurse's lock first, so none waits the other way. The
-    same 404 for another unit's request as for none."""
-    HospitalSettings.load(for_update=True)
-    nurse_id = Request.objects.filter(pk=request_id).values_list("nurse_id", flat=True).first()
-    if nurse_id is not None:
-        list(NurseProfile.objects.select_for_update(of=("self", "user"), no_key=True).select_related("user")
-             .filter(pk=nurse_id))
-    unit = unit_in_scope(user, unit_id, for_update=True)
+    """The request's month held for its nurse as any change to it is (`rosters.in_force.hold`), whatever the roster's state,
+    then the manager's scope read again on the unit as locked, then the request's row, so two clicks on Accept cannot both find
+    it pending. The request's row comes after the roster's: every write to a request holds its nurse's lock first, so no two
+    writers wait on each other through those two rows. The same 404 for another unit's request as for none."""
+    found = (Request.objects.filter(pk=request_id, window__unit_id=unit_id)
+             .values_list("nurse__user__username", "window__month").first())
+    if found is None:
+        unit_in_scope(user, unit_id)
+        raise Http404(NO_SUCH_REQUEST)
+    # A request's nurse and month never change, so they can be read before the locks that hold them.
+    hospital_id, month = found
+    held = in_force.hold(unit_id, month, nurses={hospital_id})
+    unit = unit_in_scope(user, unit_id)
     nurse_request = (Request.objects.select_for_update(of=("self",))
                      .select_related("window", "shift", "nurse__user", "pin__shift")
                      .filter(pk=request_id, window__unit=unit).first())
     if nurse_request is None:
-        raise Http404("There is no such request in your unit.")
-    roster = (Roster.objects.select_for_update(of=("self",)).select_related("solve", "unit")
-              .filter(unit=unit, month=nurse_request.window.month).first())
-    return Decision(unit, nurse_request.nurse, nurse_request, roster)
+        raise Http404(NO_SUCH_REQUEST)
+    return Decision(unit, nurse_request.nurse, nurse_request, held.roster, held)
 
 
 def why_the_pin_cannot_move(decision: Decision) -> str | None:
@@ -93,39 +98,49 @@ def refusal_to_pin(decision: Decision, shift: Shift | None, asked: str | None, j
     return judge.refusal(decision.nurse.pk, decision.name, decision.request.date, asked, shift)
 
 
-def _onto_roster(decision: Decision, code: str, by: User, reason: str) -> RosterVersion | None:
-    """The pin's cell on the month's roster. A draft takes it in place; an approved roster takes it as a new version, which tells
-    its nurses, only when a cell changes. A nurse with no row joined after the solve: the next solve takes their pin."""
+def _onto_roster(decision: Decision, shift: Shift | None, by: User, reason: str, request: HttpRequest) -> RosterVersion | None:
+    """The pin's cell on the month's roster. A draft takes it in place; the roster in force changes through
+    `rosters.in_force`, which makes a version and tells its nurses only when the cell changes. A nurse with no row joined after
+    the solve: the next solve takes their pin."""
     roster, hospital_id, day = decision.roster, decision.nurse.user.username, decision.request.date.isoformat()
     row = roster.grid.get(hospital_id) if roster else None
-    if roster is None or row is None or day not in row or row[day] == code:
+    if roster is None or row is None or day not in row:
         return None
-    grid = copy.deepcopy(roster.grid)
-    grid[hospital_id][day] = code
+    code = shift.code if shift else ""
     if roster.state == RosterState.DRAFT:
-        roster.grid = grid
-        roster.save(update_fields=["grid"])  # `updated_at` stays, as for a hand edit.
+        if row[day] != code:
+            grid = copy.deepcopy(roster.grid)
+            grid[hospital_id][day] = code
+            roster.grid = grid
+            roster.save(update_fields=["grid"])  # `updated_at` stays, as for a hand edit.
         return None
-    return make_version(roster, grid, VersionOrigin.REQUEST, by, reason)
+    made = in_force.change(decision.held, [Change(hospital_id, decision.request.date, code or None)],
+                           origin=in_force.Origin.REQUEST, by=by, why=reason, pins=1, request=request)
+    return None if made is in_force.UNCHANGED else made
 
 
-def _record_and_tell(decision: Decision, step: str, by: User, version: RosterVersion | None, request: HttpRequest) -> None:
-    """After the change: its audit entry, which says the request moved and whose, never what or why, then whoever is told."""
+def _record(decision: Decision, step: str, by: User, request: HttpRequest) -> None:
+    """The decision's audit entry, which says the request moved and whose, never what or why."""
     record(f"request.{step}", actor=by, target=decision.nurse.user.username, request=request)
-    if version is not None:
-        sending.roster_changed(decision.unit, decision.month, by)
+
+
+def _record_and_tell(decision: Decision, step: str, by: User, request: HttpRequest) -> None:
+    _record(decision, step, by, request)
     sending.request_decided(decision.request, step, by)
 
 
 def _pin_and_tell(decision: Decision, shift: Shift | None, step: str, by: User, reason: str, version_reason: str,
                   request: HttpRequest) -> RosterVersion | None:
+    """The pin, whatever the roster, then the cell. The request's own audit entry comes before the roster change's, as a swap's
+    and a cover's do, and she is told of the decision after the unit's nurses are told of the change."""
     pin = pin_cell(decision.unit, decision.nurse, decision.request.date, shift, PinOrigin.REQUEST, by)
-    version = _onto_roster(decision, shift.code if shift else "", by, version_reason)
     nurse_request = decision.request
     nurse_request.state, nurse_request.pin = RequestState.ACCEPTED, pin
     nurse_request.save(update_fields=["state", "pin"])
     RequestStep.objects.create(request=nurse_request, step=step, by=by, reason=reason, pin=pin)
-    _record_and_tell(decision, step, by, version, request)
+    _record(decision, step, by, request)
+    version = _onto_roster(decision, shift, by, version_reason, request)
+    sending.request_decided(nurse_request, step, by)
     return version
 
 
@@ -168,7 +183,7 @@ def reject(decision: Decision, by: User, reason: str, request: HttpRequest) -> N
     nurse_request.state = RequestState.REJECTED
     nurse_request.save(update_fields=["state"])
     RequestStep.objects.create(request=nurse_request, step=Step.REJECTED, by=by, reason=reason)
-    _record_and_tell(decision, Step.REJECTED, by, None, request)
+    _record_and_tell(decision, Step.REJECTED, by, request)
 
 
 def cancel(decision: Decision, by: User, reason: str, request: HttpRequest) -> None:
@@ -184,7 +199,7 @@ def cancel(decision: Decision, by: User, reason: str, request: HttpRequest) -> N
     nurse_request.state, nurse_request.pin = RequestState.CANCELLED, None
     nurse_request.save(update_fields=["state", "pin"])
     RequestStep.objects.create(request=nurse_request, step=Step.CANCELLED, by=by, reason=reason)
-    _record_and_tell(decision, Step.CANCELLED, by, None, request)
+    _record_and_tell(decision, Step.CANCELLED, by, request)
 
 
 def replaced_by_leave(nurse: NurseProfile, days: Iterable[dt.date], ended: Iterable[PinnedCell], by: User) -> list[Request]:
