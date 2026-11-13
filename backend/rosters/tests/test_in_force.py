@@ -252,6 +252,18 @@ class TestRefusals:
 
         assert changing(er, NewCell("Amal", day(25), "N")).number == 2
 
+    def test_an_origin_told_the_month_can_change_is_not_refused_when_it_ends_before_the_change(self, er, june, monkeypatch):
+        monkeypatch.setattr(membership, "today", lambda: dt.date(2026, 6, 30))
+        with transaction.atomic():
+            held = in_force.hold(er.pk, JUNE, nurses={"Amal"})
+            assert held.refusal() is None
+            monkeypatch.setattr(membership, "today", lambda: dt.date(2026, 7, 1))
+
+            made = in_force.change(held, [NewCell("Amal", day(30), "N")], origin=in_force.Origin.EDIT, by=manager(),
+                                   reason="Amal covers Night on the 30th.", pins=1)
+
+        assert made.number == 2
+
 
 def changing_the_whole_month(unit, *cells: NewCell):
     """As a re-plan's end changes the month: holding every nurse of it."""

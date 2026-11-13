@@ -23,6 +23,7 @@ import datetime as dt
 import enum
 from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
+from functools import cached_property
 from uuid import UUID
 
 from django.http import HttpRequest
@@ -116,8 +117,10 @@ class Held:
     def approved(self) -> bool:
         return self.roster is not None and self.roster.state == RosterState.APPROVED
 
-    @property
+    @cached_property
     def month_over(self) -> bool:
+        """Answered once for the hold. An origin that asks before judging, so that `change` refuses nothing, must get from
+        `change` the answer it was given, even when the month ends between the two."""
         return self.month < membership.this_month()
 
     def refusal(self) -> Refused | None:
