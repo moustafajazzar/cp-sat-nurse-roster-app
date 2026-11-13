@@ -17,6 +17,7 @@ A version's reason is for the unit's manager and the approvers only: it can say 
 notification or the audit log."""
 from __future__ import annotations
 
+import calendar
 import datetime as dt
 import enum
 from collections.abc import Collection, Iterable
@@ -105,6 +106,9 @@ class Held:
     roster: Roster | None
     nurses: frozenset[str]
     whole_month: bool
+    # Under a whole-month hold, the nurses a solve of the month plans for, read under its locks: the rows of the grid a change
+    # makes then. `nurses` is wider, since it also locks every row on the grid, of a nurse who has left the month too.
+    months_nurses: frozenset[str] | None = None
 
     @property
     def approved(self) -> bool:
@@ -144,8 +148,16 @@ def hold(unit_id, month: dt.date, *, nurses: Collection[str] | WholeMonth) -> He
     if unit is not None:
         roster = (Roster.objects.select_for_update(of=("self",)).select_related("solve", "unit")
                   .filter(unit=unit, month=month).first())
+    months_nurses = _the_months_nurses(unit, month) if whole and unit is not None else None
     return Held(unit=unit, month=month, roster=roster, nurses=frozenset(nurse.user.username for nurse in locked),
-                whole_month=whole)
+                whole_month=whole, months_nurses=months_nurses)
+
+
+def _the_months_nurses(unit: Unit, month: dt.date) -> frozenset[str]:
+    """Whom a solve of the month plans for, as `solves.input.assemble` picks them, so a re-plan's grid and the rows it makes agree:
+    every nurse with a day in the month, less one whose account was deactivated while the profile runs on."""
+    return frozenset(nurse.user.username for nurse in membership.rostered_in(unit, month).select_related("user")
+                     if not membership.no_longer_serving(nurse))
 
 
 class Unchanged:
@@ -159,9 +171,15 @@ UNCHANGED = Unchanged()
 
 
 def _grid_after(held: Held, cells: Iterable[Change]) -> dict[str, dict[str, str]]:
-    """The roster's grid with these cells set, in today's codes. A cell is a nurse's day on the grid: no row is added or taken
-    away, and a cell outside the grid, or of a nurse not held, is the origin's mistake, since judging refuses it first."""
+    """The roster's grid with these cells set, in today's codes. A cell is a nurse's day on the grid, and a cell outside the grid,
+    or of a nurse not held, is the origin's mistake, since judging refuses it first. A change of named nurses adds or takes away
+    no row. A change of the whole month makes its rows the month's nurses first, as a re-plan's grid has them: a nurse no longer
+    in the month loses hers, and one who joined gains a row of days off, to be set by the cells."""
     grid = {nurse: dict(row) for nurse, row in held.roster.grid.items()}
+    if held.whole_month:
+        days = [held.month.replace(day=day).isoformat()
+                for day in range(1, calendar.monthrange(held.month.year, held.month.month)[1] + 1)]
+        grid = {nurse: grid[nurse] if nurse in grid else dict.fromkeys(days, "") for nurse in held.months_nurses}
     cells = list(cells)
     codes = current_codes(cell.shift for cell in cells if cell.shift)
     for cell in cells:

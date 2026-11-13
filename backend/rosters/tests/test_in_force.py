@@ -17,6 +17,7 @@ from covers.tests.conftest import opened
 from notifications.models import Event, Notification
 from notifications.tests.test_events import as_user
 from nurses import membership
+from nurses.models import Placement
 from rosters import in_force
 from rosters.approved import Change
 from rosters.drafts import in_current_codes
@@ -236,3 +237,55 @@ class TestRefusals:
         monkeypatch.setattr(membership, "today", lambda: dt.date(2026, 6, 20))
 
         assert changing(er, Change("Amal", day(25), "N")).number == 2
+
+
+def changing_the_whole_month(unit, *cells: Change):
+    """As a re-plan's end changes the month: holding every nurse of it."""
+    with transaction.atomic():
+        held = in_force.hold(unit.pk, JUNE, nurses=in_force.WHOLE_MONTH)
+        return in_force.change(held, list(cells), origin=in_force.Origin.REPLAN, by=manager(), why="Re-planned.", pins=0)
+
+
+@pytest.fixture
+def amal_left_and_faris_joined(er, make_user):
+    """Amal is placed in another unit from June, and Faris joins the ER on 1 June: neither is how the roster in force has it."""
+    from nurses.tests.conftest import make_unit
+    from solves.tests.conftest import nurse_in
+    from rosters.tests.test_review import profile
+    Placement.objects.create(nurse=profile("Amal"), unit=make_unit("ICU"), from_month=JUNE)
+    nurse_in(er, make_user, "Faris", gender="M", start=JUNE)
+
+
+class TestTheRowsOfAWholeMonth:
+    def test_a_whole_month_change_leaves_out_a_nurse_no_longer_in_it_and_gives_one_who_joined_an_empty_row(
+            self, er, june, amal_left_and_faris_joined):
+        amal_worked = sum(1 for code in june.grid["Amal"].values() if code)
+
+        made = changing_the_whole_month(er, Change("Badr", day(2), None))
+
+        grid = in_force_grid(er)
+        assert set(grid) == {"Badr", "Dana", "Emad", "Faris"}
+        assert grid["Faris"] == {(JUNE + dt.timedelta(days=n)).isoformat(): "" for n in range(30)}
+        assert grid["Badr"]["2026-06-02"] == "" and grid == in_current_codes(versions(june)[-1].grid)
+        [entry] = roster_changed_entries()
+        assert entry.after == {"version": made.number, "pins": 0, "cells": amal_worked + 1}, "Amal's shifts are cells changed"
+
+    def test_rows_alone_are_a_change(self, er, june, amal_left_and_faris_joined):
+        made = changing_the_whole_month(er)
+
+        assert made.number == 2 and "Amal" not in in_force_grid(er) and "Faris" in in_force_grid(er)
+
+    def test_a_cell_of_a_nurse_no_longer_in_the_month_is_the_callers_mistake(self, er, june, amal_left_and_faris_joined):
+        with pytest.raises(ValueError, match="Amal"):
+            changing_the_whole_month(er, Change("Amal", day(9), "N"))
+
+    def test_a_change_of_named_nurses_never_adds_or_drops_a_row(self, er, june, amal_left_and_faris_joined):
+        changing(er, Change("Badr", day(2), None))
+
+        assert set(in_force_grid(er)) == {"Amal", "Badr", "Dana", "Emad"}
+
+    def test_a_whole_month_change_of_a_month_as_the_roster_has_it_keeps_its_rows(self, er, june):
+        assert changing_the_whole_month(er) is in_force.UNCHANGED
+        changing_the_whole_month(er, Change("Amal", day(9), "N"))
+
+        assert set(in_force_grid(er)) == {"Amal", "Badr", "Dana", "Emad"}
