@@ -9,6 +9,8 @@ from django.db import connection, transaction
 from django.test.utils import CaptureQueriesContext
 
 from accounts.models import User
+from conftest import post
+from hospital.models import LeaveType
 from nurses import membership
 from nurses.models import NurseProfile
 from nurses.tests.test_two_at_once import alongside
@@ -18,7 +20,7 @@ from rosters.drafts import in_current_codes
 from rosters.models import Roster
 from rosters.tests.conftest import approved_roster
 from rosters.tests.test_pins import change_shift, pin
-from rosters.tests.test_review import carla, record_leave  # noqa: F401
+from rosters.tests.test_review import BADR_OFF, BADR_WORKS, carla, record_leave  # noqa: F401
 from rosters.tests.test_versions import change
 from solves import running
 from solves.models import ReplanOutcome, Solve
@@ -189,3 +191,74 @@ class TestAReplansEnd:
         assert edit.result().number == 3
         latest = in_force_now(er).versions.first()
         assert latest.grid["Amal"]["2026-06-15"] == "D" and latest.grid["Badr"]["2026-06-20"] == "D"
+
+
+def leave_over_the_month_end(client, unit):
+    """Dana's leave on 30 June and 1 July, both of which she works in the sound rosters."""
+    return post(client, f"/api/units/{unit.pk}/leave", {
+        "nurse_id": str(NurseProfile.objects.get(user__username="Dana").pk),
+        "leave_type_id": str(LeaveType.objects.get(name="Sick").pk), "first": "2026-06-30", "last": "2026-07-01"})
+
+
+def test_a_leave_write_takes_no_catalogue_lock_and_holds_the_nurse_the_unit_then_each_month_in_order(mona, er, june):
+    """So recording leave never waits on a solve or a rename at the catalogue. The unit's lock is `FOR KEY SHARE`, which a
+    change's or a rename's `FOR UPDATE` of the unit waits on, and which waits on theirs."""
+    approved_roster(er, "2026-07")
+
+    with CaptureQueriesContext(connection) as queries:
+        answer = leave_over_the_month_end(mona, er)
+    assert [row["version"] for row in answer.json()["shifts_taken_off"]] == [2, 2]
+
+    locks = [query["sql"] for query in queries.captured_queries if " FOR " in query["sql"]]
+    assert not [sql for sql in locks if "hospital_hospitalsettings" in sql]
+    ordered = [(table, sql) for sql in locks for table in ("nurses_nurseprofile", "units_unit", "rosters_roster")
+               if f'FROM "{table}"' in sql]
+    assert [table for table, _ in ordered] == ["nurses_nurseprofile", "units_unit", "rosters_roster", "rosters_roster"]
+    assert "FOR KEY SHARE" in ordered[1][1]
+    assert "2026-06-01" in ordered[2][1] and "2026-07-01" in ordered[3][1]
+
+
+def test_leave_waits_for_a_change_to_the_same_nurse_and_comes_after_it(mona, er, june, pool):
+    """The change holds the nurse's lock, which a leave write takes first."""
+    with transaction.atomic():
+        changed(er, Change("Badr", dt.date(2026, 6, BADR_OFF), "D"))
+        leave = alongside(pool, lambda: record_leave(mona, er, "Badr", BADR_WORKS))
+        assert not leave.done()
+
+    answer = leave.result()
+    assert answer.status_code == 201, answer.content
+    assert [row["version"] for row in answer.json()["shifts_taken_off"]] == [3]
+    roster = in_force_now(er)
+    assert roster.versions.first().number == 3
+    assert roster.grid["Badr"][f"2026-06-{BADR_OFF:02d}"] == "D" and roster.grid["Badr"][f"2026-06-{BADR_WORKS:02d}"] == ""
+    assert roster.grid == roster.versions.first().grid
+
+
+def test_a_change_waits_for_leave_on_another_nurse_and_keeps_the_shift_it_took_off(mona, er, june, pool):
+    """Different nurses' locks do not meet: the unit's and the roster's are what order them."""
+    with transaction.atomic():
+        assert record_leave(mona, er, "Badr", BADR_WORKS).status_code == 201
+        edit = alongside(pool, lambda: changed(er, Change("Amal", dt.date(2026, 6, 9), "N")))
+        assert not edit.done()
+
+    assert edit.result().number == 3
+    roster = in_force_now(er)
+    assert roster.grid["Badr"][f"2026-06-{BADR_WORKS:02d}"] == "" and roster.grid["Amal"]["2026-06-09"] == "N"
+    assert roster.grid == roster.versions.first().grid
+
+
+def test_a_shift_rename_waits_for_leave_over_two_approved_months_and_then_follows_both(mona, er, june, carla, pool):
+    approved_roster(er, "2026-07")
+
+    with transaction.atomic():
+        answer = leave_over_the_month_end(mona, er)
+        assert [row["date"] for row in answer.json()["shifts_taken_off"]] == ["2026-06-30", "2026-07-01"]
+        rename = alongside(pool, lambda: change_shift(carla, "N", code="NT"))
+        assert not rename.done()
+
+    assert rename.result().status_code == 200
+    for month, first in ((JUNE, "2026-06-30"), (dt.date(2026, 7, 1), "2026-07-01")):
+        roster = Roster.objects.get(unit=er, month=month)
+        assert roster.versions.first().number == 2 and roster.grid["Dana"][first] == ""
+        assert "N" not in {code for row in roster.grid.values() for code in row.values()}
+        assert roster.grid == in_current_codes(roster.versions.first().grid)

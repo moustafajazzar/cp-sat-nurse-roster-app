@@ -160,6 +160,33 @@ def _the_months_nurses(unit: Unit, month: dt.date) -> frozenset[str]:
                      if not membership.no_longer_serving(nurse))
 
 
+def hold_for_leave(unit_id, months: Iterable[dt.date], *, nurse: str) -> list[Held]:
+    """Leave's own, narrower hold: each of these months of the unit, in month order, for taking one nurse's (hospital ID)
+    shifts off. Call it under her lock, which every leave write takes first. It takes no catalogue lock, so recording leave
+    never waits on a solve or a rename there.
+
+    The unit is taken `FOR KEY SHARE`, the weakest lock there is. A cover leave opens refers to its unit, whose foreign key is
+    checked at commit under that lock; taking it here, before any roster, keeps the order unit, roster, so an edit or a rename
+    holding the unit while it waits on a roster is waited for instead of deadlocked with. A leave write of another unit's nurse,
+    or a read of the unit, never waits on it. Then each month's roster, approved ones only: a draft keeps its shift until a solve
+    or an edit, so it is neither locked nor held, and its month is held with no roster. Rosters are locked by month, as a rename
+    locks them, so the two never wait on each other both ways."""
+    months = sorted(set(months))
+    if not months:
+        return []
+    # The ORM takes no `FOR KEY SHARE`.
+    unit = next(iter(Unit.objects.raw(f'SELECT * FROM "{Unit._meta.db_table}" WHERE "id" = %s FOR KEY SHARE', [unit_id])),
+                None)
+    held = []
+    for month in months:
+        roster = None
+        if unit is not None:
+            roster = (Roster.objects.select_for_update(of=("self",)).select_related("solve", "unit")
+                      .filter(unit=unit, month=month, state=RosterState.APPROVED).first())
+        held.append(Held(unit=unit, month=month, roster=roster, nurses=frozenset({nurse}), whole_month=False))
+    return held
+
+
 class Unchanged:
     """The answer to a change that alters no cell: no version, no audit entry, nobody told."""
 

@@ -111,7 +111,7 @@ def _shift_changed_since(solve: Solve) -> str | None:
 def carry_rename_through_grids(old_code: str, new_code: str) -> None:
     """Call it under the catalogue's lock. A stored input and result stay what they were, as does a roster version. A submitted or
     approved grid follows too: a rename is the same shift, so nothing the approver decides on changes."""
-    # By month, then unit: the order leave over two approved months locks them in (`rosters.versions.take_off_for_leave`), so
+    # By month, then unit: the order leave over two approved months locks them in (`rosters.in_force.hold_for_leave`), so
     # a rename and such a leave never wait on each other both ways.
     rosters = [roster for roster in Roster.objects.select_for_update().order_by("month", "unit_id") if _uses(roster, old_code)]
     for roster in rosters:
