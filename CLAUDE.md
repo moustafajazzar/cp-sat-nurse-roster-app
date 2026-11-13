@@ -151,3 +151,19 @@ through a new version. The result `version` stays 1. Every change gets a dated e
 - `import … from "zod"` is aliased to `src/lib/zod.ts` (zod with `jitless`, so the content security policy needs no `unsafe-eval`).
 - User-facing wording lives in `src/lib/*-words.ts` modules.
 - The app is a PWA (`public/sw.js`, `src/lib/stale-build.ts`) and must hold its layout down to 320 px wide.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live as this repo's GitHub issues, through the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default triage labels, each named after its role: `needs-triage`, `needs-info`, `ready-for-agent`,
+`ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root, both created when first needed. See
+`docs/agents/domain.md`.
