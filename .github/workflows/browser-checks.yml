@@ -1,0 +1,51 @@
+# The browser checks and the compose-level operations test, run by the same script anyone can run from a checkout
+# (e2e/ci.sh): one image built from the commit, a seeded stack and an empty one on it, every Playwright project against them,
+# then deploy/tests/operations.sh on a stack of its own.
+name: Browser checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  browser-checks:
+    name: Browser checks
+    runs-on: ubuntu-latest
+    # The stacks run real solves, and the checks share one stack and run one at a time.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      # The script installs Chromium itself, but the libraries Chromium needs from the system want root, which only a
+      # runner should hand out; so they go in here, with the Playwright the checks pin.
+      - name: What Chromium needs from the system
+        working-directory: e2e
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install-deps chromium
+      - name: e2e/ci.sh
+        run: e2e/ci.sh
+      - name: Keep Playwright's traces of what failed
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-test-results
+          path: e2e/test-results
+          if-no-files-found: ignore
+          retention-days: 7
