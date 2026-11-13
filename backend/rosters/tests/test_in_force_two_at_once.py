@@ -78,7 +78,8 @@ def test_a_hold_locks_the_catalogue_the_nurses_and_their_users_the_unit_then_the
 
 
 def test_of_two_changes_at_once_the_second_waits_and_is_the_next_version_built_on_the_first(er, june, pool):
-    """Different nurses' cells, so the roster's row lock is what orders them."""
+    """Different nurses' cells, so their locks do not meet: the second waits at the catalogue's, the first lock every change
+    takes, and reads the roster only once the first has committed."""
     with transaction.atomic():
         changed(er, Change("Amal", dt.date(2026, 6, 9), "N"))
         second = alongside(pool, lambda: changed(er, Change("Badr", dt.date(2026, 6, 2), None), why="Badr asked."))
