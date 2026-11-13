@@ -5,7 +5,8 @@ import datetime as dt
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from django.db import transaction
+from django.db import connection, transaction
+from django.test.utils import CaptureQueriesContext
 
 from conftest import post
 from notifications.models import Notification
@@ -17,6 +18,7 @@ from requesting.tasks import open_and_close_request_windows
 from requesting.tests.conftest import ask, asked, decide, opened
 from requesting.tests.test_preferences import prefer, preferred
 from requesting.tests.test_requests import leave_for
+from rosters.tests.test_pins import solved
 from units.models import Unit
 from solves.tests.conftest import empty_queue  # noqa: F401
 
@@ -132,3 +134,19 @@ def test_a_decision_waiting_on_a_withdrawal_finds_it_withdrawn(mona, er, pool):
         assert not decision.done()
 
     assert decision.result().json()["detail"] == "This request is withdrawn already."
+
+
+def test_a_decision_locks_the_requests_row_after_the_months_roster(mona, er, solver):
+    """As every change to a unit's month holds it (`rosters.in_force.hold`): the catalogue, the nurse, the unit and the roster,
+    then the request. Every write to a request holds its nurse's lock first, so no two wait on each other through those rows."""
+    solved(mona, er, solver)
+    opened(mona, er)
+    made = asked(as_user("Amal"), 3)
+
+    with CaptureQueriesContext(connection) as queries:
+        assert decide(mona, er, made["id"], "accept").status_code == 200
+
+    tables = ("hospital_hospitalsettings", "nurses_nurseprofile", "units_unit", "rosters_roster", "requesting_request")
+    locked = [next(table for table in tables if f'FROM "{table}"' in query["sql"])
+              for query in queries.captured_queries if " FOR " in query["sql"]]
+    assert locked[:5] == list(tables)

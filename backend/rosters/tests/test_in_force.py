@@ -11,6 +11,7 @@ from django.test import RequestFactory
 from procrastinate.contrib.django.models import ProcrastinateJob
 
 from accounts.models import User
+from audit.log import record
 from audit.models import AuditEntry
 from covers.models import Cover, CoverState
 from covers.tests.conftest import opened
@@ -156,6 +157,18 @@ class TestAuditEntry:
         changing(er, Change("Amal", day(9), "N"), request=asked)
 
         assert roster_changed_entries()[0].ip == "10.1.2.3"
+
+    def test_a_requests_comes_after_the_requests_own_entry_as_a_swaps_and_a_covers_do(self, er, june):
+        """An origin records its own entry before it changes, so the log reads in the order things were decided."""
+        with transaction.atomic():
+            held = in_force.hold(er.pk, JUNE, nurses={"Amal"})
+            record("request.accepted", actor=manager(), target="Amal")
+            in_force.change(held, [Change("Amal", day(9), "N")], origin=in_force.Origin.REQUEST, by=manager(),
+                            why="Amal's request for Night (N) on 9 June 2026 accepted.", pins=1)
+
+        assert [(entry.action, entry.target, entry.after) for entry in AuditEntry.objects.order_by("id")][-2:] == [
+            ("request.accepted", "Amal", None), ("roster.changed", "ER, 2026-06", {"version": 2, "pins": 1, "cells": 1})]
+        assert versions(june)[-1].origin == "request"
 
 
 class TestWhoIsTold:
