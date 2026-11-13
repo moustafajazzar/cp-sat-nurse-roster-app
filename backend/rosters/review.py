@@ -103,15 +103,15 @@ def approval(roster: Roster) -> Submission | None:
     return roster.submissions.filter(decision=Decision.APPROVED).select_related("decided_by").first()
 
 
-def lock_the_months_nurses(unit: Unit, month: dt.date, roster: Roster | None) -> None:
+def lock_the_months_nurses(unit: Unit, month: dt.date, roster: Roster | None) -> list[NurseProfile]:
     """Every nurse leave could be recorded for in this month, under the lock a leave write takes (the user and the profile), so
     that none lands between checking a roster and submitting or approving it. Take it after the catalogue's and before the
     unit's."""
     in_grid = list(roster.grid) if roster else []
     ids = set(membership.placed_in(unit, month).values_list("pk", flat=True))
     ids |= set(NurseProfile.objects.filter(user__username__in=in_grid).values_list("pk", flat=True))
-    list(NurseProfile.objects.select_for_update(of=("self", "user"), no_key=True).select_related("user")
-         .filter(pk__in=ids).order_by("pk"))
+    return list(NurseProfile.objects.select_for_update(of=("self", "user"), no_key=True).select_related("user")
+                .filter(pk__in=ids).order_by("pk"))
 
 
 MONTH_AT_SUBMIT_KEYS = ("id", "gender", "leave", "pinned", "on_probation", "preceptor")
