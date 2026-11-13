@@ -5,7 +5,7 @@
 #
 # The first day, from tomorrow on the hospital's clock (or FROM, if later), on which a staff nurse works a shift that sick leave
 # would take off, opening a cover that a colleague could take: each is tried in a transaction rolled back, with the leave
-# recorded and the shift taken off as the leave form does (`nurses.leave_api.take_off_for_leave`), then the cover judged
+# recorded and the shift taken off as the leave form does (`nurses.leave.take_off_for_leave`), then the cover judged
 # (`covers.judging.judge`). Nothing is kept. Neither nurse is one of AVOID's hospital IDs. One line, `E2E_COVER {...}`.
 import datetime as dt
 import json
@@ -18,7 +18,7 @@ from covers.judging import judge
 from covers.models import Cover
 from hospital.models import LeaveType
 from nurses import membership
-from nurses.leave_api import take_off_for_leave
+from nurses.leave import take_off_for_leave
 from nurses.models import Leave, NurseProfile
 from rosters.models import Roster
 
