@@ -293,7 +293,7 @@ class TakenOff:
     covers: dict[dt.date, Cover] = field(default_factory=dict)
 
 
-def _take_off(nurse: NurseProfile, unit: Unit, days: Iterable[dt.date], by: User) -> list[TakenOff]:
+def take_off_for_leave(nurse: NurseProfile, unit: Unit, days: Iterable[dt.date], by: User) -> list[TakenOff]:
     """Leave wins over a shift. On each approved roster of this unit for a month not yet over, a shift the roster in force holds
     on one of these days is taken off through `rosters.in_force`, as a change whose reason says leave and never the type. No pin
     is made: the leave is the fact a re-plan keeps. A month that is over keeps its grid, as an edit cannot change it, and the
@@ -339,7 +339,7 @@ class _Begun:
 
 def _begin(nurse: NurseProfile, unit: Unit, leave_type: LeaveType, days: list[dt.date], user: User) -> _Begun:
     """Every write that adds a date comes through here, so here is where leave wins over a pin, and over a shift on an approved
-    roster (`_take_off`). Leave's own audit entry stays as it is, whoever recorded it: an entry of the pin's or of the version's
+    roster (`take_off_for_leave`). Leave's own audit entry stays as it is, whoever recorded it: an entry of the pin's or of the version's
     beside it would tell the System Admin the month of this leave. Record it before this, as the unit's nurses are told of
     each version here."""
     Leave.objects.bulk_create([Leave(nurse=nurse, date=day, leave_type=leave_type, recorded_by=user) for day in days])
@@ -350,7 +350,7 @@ def _begin(nurse: NurseProfile, unit: Unit, leave_type: LeaveType, days: list[dt
                   .values_list("month", "state"))
     return _Begun([RemovedPin(date=pin.date, shift=pin.code, origin=pin.origin,
                               roster=states.get(pin.date.replace(day=1), "none")) for pin in ours],
-                  _take_off(nurse, unit, days, user), replaced)
+                  take_off_for_leave(nurse, unit, days, user), replaced)
 
 
 def _end(ids: Iterable[UUID], user: User) -> None:
