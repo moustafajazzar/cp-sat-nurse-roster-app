@@ -35,7 +35,7 @@ from rosters import review
 from rosters.approved import Change
 from rosters.drafts import current_codes
 from rosters.models import Roster, RosterState, RosterVersion, VersionOrigin
-from rosters.versions import differences, make_version
+from rosters.versions import Grid, differences
 from solves.models import Solve
 from units.models import Unit
 
@@ -224,6 +224,9 @@ def change(held: Held, cells: Iterable[Change], *, origin: Origin, by: User, why
     pins the origin made or ended for it, for the audit entry; `solve` the one the grid came from, if any; `request` the HTTP
     request that asked, if any, whose client address the audit entry keeps. Refuses (`Refused`) a roster that is not approved
     and a month that is over. Whoever made the change is not told of it."""
+    from covers.expiring import on_new_version as fill_covers  # covers reads rosters, so not at the top.
+    from swaps.expiring import on_new_version as expire_swaps  # swaps reads rosters, so not at the top.
+
     refused = held.refusal()
     if refused:
         raise refused
@@ -232,9 +235,28 @@ def change(held: Held, cells: Iterable[Change], *, origin: Origin, by: User, why
     changed = len(differences(roster.grid, grid))
     if not changed:
         return UNCHANGED
-    version = make_version(roster, grid, policy.stored, by, why, solve=solve)
+    before = roster.versions.first().grid
+    version = _make_version(roster, grid, policy.stored, by, why, solve=solve)
+    expire_swaps(roster, before, grid)
+    fill_covers(roster, before, grid, policy.stored)
     if policy.audited:
         record("roster.changed", actor=by, target=roster.audit_target, request=request,
                after={"version": version.number, "pins": pins, "cells": changed})
     sending.roster_changed(roster.unit, roster.month, by)
+    return version
+
+
+def _make_version(roster: Roster, grid: Grid, origin: VersionOrigin, by: User, reason: str = "",
+                  solve: Solve | None = None) -> RosterVersion:
+    """The next number, with `grid` in today's codes, which becomes `Roster.grid` too, and the month's carry-over projected
+    again. Hold the roster's row lock, so that two versions at once each get their own number in the order they commit. Only
+    `change` and approval, which makes version 1, write a version: any other writer would skip what follows a change."""
+    from closes.tasks import project  # The month close reads rosters, so not at the top.
+
+    latest = roster.versions.first()
+    roster.grid = grid
+    roster.save(update_fields=["grid"])  # `updated_at` stays: it is when a solve or a restore last replaced the grid.
+    version = RosterVersion.objects.create(roster=roster, number=latest.number + 1 if latest else 1, grid=grid, origin=origin,
+                                           solve=solve, created_by=by, reason=reason)
+    project(roster.unit, roster.month)
     return version
