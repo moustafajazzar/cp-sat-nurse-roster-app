@@ -1,0 +1,119 @@
+# The three suites, and the two things that go stale without anyone noticing: a model change with no migration, and an API
+# change whose exported schema or generated frontend client was not committed.
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# The jobs only read the checkout. A pull request from a fork runs them with no more than that.
+permissions:
+  contents: read
+
+# A newer push to the same branch makes the run before it pointless.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# bash by name runs with pipefail, so a failing command in a pipe fails its step.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      # The suite needs a real PostgreSQL: its concurrency tests wait on row locks.
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: nurse_roster
+          POSTGRES_DB: nurse_roster
+          POSTGRES_PASSWORD: dev-only-postgres-password
+        ports:
+          - 5432:5432
+        # Without a health check the job's steps start while the server is still coming up.
+        options: >-
+          --health-cmd "pg_isready -U nurse_roster"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      # manage.py refuses to start without these. The values open nothing outside this job.
+      SECRET_KEY: ci-only-secret-key
+      SOLVER_TOKEN: ci-only-solver-token
+      POSTGRES_HOST: localhost
+      POSTGRES_PASSWORD: dev-only-postgres-password
+    steps:
+      - uses: actions/checkout@v7
+      # This action publishes exact versions only, with no moving major tag to follow.
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+      # --locked fails on a lock file that no longer matches the projects, rather than quietly resolving again.
+      - run: uv sync --locked
+      - name: Tests
+        working-directory: backend
+        run: uv run pytest -q
+      - name: Every model change has its migration
+        working-directory: backend
+        run: uv run python manage.py makemigrations --check --dry-run
+      - name: The committed API schema is the one the code exports
+        working-directory: backend
+        run: |
+          uv run python manage.py export_openapi_schema --api config.api.api --indent 2 --output ../frontend/openapi.json
+          stale=$(git status --porcelain -- ../frontend/openapi.json)
+          if [[ -n $stale ]]; then
+            echo "::error file=frontend/openapi.json::The API changed without its schema. Export it again and regenerate the frontend client (see CLAUDE.md)."
+            git diff --stat -- ../frontend/openapi.json
+            exit 1
+          fi
+
+  solver:
+    name: Solver
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      # This action publishes exact versions only, with no moving major tag to follow.
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Tests
+        working-directory: solver
+        run: uv run python -m pytest -q
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: The committed client is the one the schema generates
+        # `git status` rather than `git diff`, so a generated file that was never committed counts as stale too.
+        run: |
+          npm run generate:api
+          stale=$(git status --porcelain -- src/api/generated)
+          if [[ -n $stale ]]; then
+            echo "::error::frontend/src/api/generated is stale. Run 'npm run generate:api' in frontend/ and commit the result."
+            echo "$stale"
+            exit 1
+          fi
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
