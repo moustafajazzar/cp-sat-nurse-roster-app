@@ -138,8 +138,8 @@ def approve_swap(request: HttpRequest, unit_id: UUID, swap_id: UUID, body: Appro
     """Its cells become pinned cells of origin `swap` in a new version with origin `swap`, in force at once. Refused while a cell
     cannot hold its change or the grid would newly break a hard rule."""
     with transaction.atomic():
-        swap = steps.locked_for_decision(request.user, unit_id, swap_id)
-        steps.approve(swap, request.user, body.reason.strip(), request)
+        held, swap = steps.locked_for_decision(request.user, unit_id, swap_id)
+        steps.approve(held, swap, request.user, body.reason.strip(), request)
     return _decision(request, unit_id, swap_id)
 
 
@@ -149,6 +149,6 @@ def reject_swap(request: HttpRequest, unit_id: UUID, swap_id: UUID, body: Reject
     if not reason:
         refuse((("reason",), "Say why: everyone in the swap reads it."))
     with transaction.atomic():
-        swap = steps.locked_for_decision(request.user, unit_id, swap_id)
+        _, swap = steps.locked_for_decision(request.user, unit_id, swap_id)
         steps.reject(swap, request.user, reason, request)
     return _decision(request, unit_id, swap_id)

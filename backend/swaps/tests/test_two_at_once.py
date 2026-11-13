@@ -6,11 +6,14 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from django.db import transaction
 
+from accounts.models import Role
+from conftest import post
 from notifications.models import Event, Notification
 from notifications.tests.test_events import as_user
+from nurses.models import NurseProfile
 from nurses.tests.test_two_at_once import alongside
 from rosters.models import RosterVersion
-from rosters.tests.test_pins import pin
+from rosters.tests.test_pins import icu, pin
 from rosters.tests.test_versions import change
 from solves.tests.conftest import empty_queue  # noqa: F401
 from swaps.models import Swap, SwapState
@@ -112,3 +115,22 @@ def test_a_proposal_waits_for_an_edit_of_one_of_its_cells_and_is_judged_on_the_n
     answer = proposal.result()
     assert answer.status_code == 422
     assert [row["msg"] for row in answer.json()["detail"]] == ["Emad's cell on 9 June 2026 is already Day (D)."]
+
+
+def test_a_proposal_waits_for_a_transfer_of_its_proposer_and_is_judged_in_the_unit_she_is_now_in(in_force, carla, make_user,
+                                                                                                    pool):
+    """Her unit can only be read before the proposal's locks; the transfer moves her while it waits for them."""
+    other = icu(make_user("omar", Role.UNIT_MANAGER))
+    badr = as_user("Badr")
+
+    with transaction.atomic():
+        moved = post(carla, f"/api/nurses/{NurseProfile.objects.get(user__username='Badr').pk}/transfer",
+                     {"unit_id": str(other.pk), "from_month": "2026-06"})
+        assert moved.status_code == 200, moved.content
+        proposal = alongside(pool, lambda: propose(badr, *SOUND_SWAP))
+        assert not proposal.done()
+
+    answer = proposal.result()
+    assert answer.status_code == 409
+    assert answer.json()["detail"] == "The ICU roster for June 2026 is not approved yet, so there is nothing to swap."
+    assert not Swap.objects.exists()
