@@ -94,6 +94,18 @@ def test_an_approval_waits_for_an_edit_of_one_of_its_cells_and_finds_it_expired(
     assert RosterVersion.objects.count() == 2
 
 
+def test_an_edit_waits_for_a_proposal_and_its_version_expires_it(in_force, mona, pool):
+    badr, other_tab = as_user("Badr"), as_user("mona")
+
+    with transaction.atomic():
+        assert propose(badr, *SOUND_SWAP).status_code == 201
+        edit = alongside(pool, lambda: change(other_tab, in_force, pin("Emad", 9, "D")))
+        assert not edit.done()
+
+    assert edit.result().status_code == 200
+    assert Swap.objects.get().state == SwapState.EXPIRED
+
+
 def test_a_proposal_waits_for_an_edit_of_one_of_its_cells_and_is_judged_on_the_new_version(in_force, mona, pool):
     badr = as_user("Badr")
 
