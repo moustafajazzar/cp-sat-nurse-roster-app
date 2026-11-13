@@ -26,7 +26,7 @@ from nurse_roster.request import load_request
 
 from accounts.models import Role
 from hospital.models import Shift
-from rosters.approved import ApprovedMonth, Change, headcount_of, newly_broken, shift_day, with_pins
+from rosters.approved import ApprovedMonth, NewCell, headcount_of, newly_broken, shift_day, with_pins
 from rosters.editing import Checked, accounted, scored
 from rosters.models import PinOrigin, Roster
 from rosters.pins import long_date
@@ -152,7 +152,7 @@ class CoverMonth(ApprovedMonth):
 
     def with_her(self, hospital_id: str) -> tuple[Checked, list[dict]]:
         """Her grid's check, and the hard rules it newly breaks."""
-        change = [Change(hospital_id, self.day, self.shift.code)]
+        change = [NewCell(hospital_id, self.day, self.shift.code)]
         after = scored(with_pins(self.input, self, change), self.grid_after(change))
         return after, (newly_broken(self.before, after) if after.answer else [])
 

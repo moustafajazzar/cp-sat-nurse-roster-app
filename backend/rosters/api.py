@@ -23,7 +23,7 @@ from notifications import sending
 from nurses import membership
 from nurses.api import MonthText
 from rosters import in_force, review
-from rosters.approved import Change
+from rosters.approved import NewCell
 from rosters.drafts import FROZEN, MONTH_OVER, in_current_codes
 from rosters.editing import Checked, DraftEdits, Edit, check_saved, scored, with_edits
 from rosters.grids import GridView, full_names, grid_view
@@ -487,11 +487,11 @@ def save_version(request: HttpRequest, unit_id: UUID, body: VersionBody) -> Rost
     return _roster_month(unit, month, request.user)
 
 
-def _cells(editing: DraftEdits, edits: list[Edit]) -> list[Change]:
+def _cells(editing: DraftEdits, edits: list[Edit]) -> list[NewCell]:
     """Each edited cell as the roster in force would hold it. Clearing the cell of a nurse with no row on the grid changes
     nothing, so it has none."""
     on_grid = [edit for edit in edits if edit.day in editing.roster.grid.get(edit.hospital_id, ())]
-    return [Change(edit.hospital_id, edit.date, editing.cell_after(edit) or None) for edit in on_grid]
+    return [NewCell(edit.hospital_id, edit.date, editing.cell_after(edit) or None) for edit in on_grid]
 
 
 class VersionRow(Schema):

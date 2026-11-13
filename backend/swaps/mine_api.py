@@ -29,7 +29,7 @@ from rosters.review import name_of
 from rosters.sheets import days_of
 from swaps import steps
 from swaps.expiring import state_now
-from swaps.judging import Change, on_probation_said
+from swaps.judging import NewCell, on_probation_said
 from swaps.models import Swap
 
 router = Router(tags=["swaps"])
@@ -194,7 +194,7 @@ class ProposeSwapBody(StrictSchema):
     note: str = Field("", max_length=500, description="Optional. Everyone in the swap and the unit's manager read it.")
 
 
-def _changes(body: ProposeSwapBody) -> list[Change]:
+def _changes(body: ProposeSwapBody) -> list[NewCell]:
     """Whatever the roster holds, these could never be meant."""
     wrong, seen = [], set()
     for index, cell in enumerate(body.cells):
@@ -205,7 +205,7 @@ def _changes(body: ProposeSwapBody) -> list[Change]:
         seen.add((cell.hospital_id, cell.date))
     if wrong:
         refuse(*wrong)
-    return [Change(cell.hospital_id, cell.date, cell.shift or None) for cell in body.cells]
+    return [NewCell(cell.hospital_id, cell.date, cell.shift or None) for cell in body.cells]
 
 
 def _answer_row(request: HttpRequest, swap_id: UUID) -> MySwapRow:

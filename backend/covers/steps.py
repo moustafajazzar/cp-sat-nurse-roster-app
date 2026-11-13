@@ -27,7 +27,7 @@ from notifications import sending
 from notifications.sending import CoverStep
 from nurses.models import NurseProfile
 from rosters import in_force
-from rosters.approved import Change
+from rosters.approved import NewCell
 from rosters.models import PinOrigin
 from rosters.pins import long_date, pin_cell
 from rosters.review import name_of
@@ -179,7 +179,7 @@ def accept(user: User, cover_id: UUID, request: HttpRequest) -> Cover:
     # The cover's own entry first, then the roster-change entry the change writes.
     record("cover.accepted", actor=user, target=user.username, request=request)
     try:
-        version = in_force.change(held, [Change(user.username, cover.date, cover.shift.code)], origin=in_force.Origin.COVER,
+        version = in_force.change(held, [NewCell(user.username, cover.date, cover.shift.code)], origin=in_force.Origin.COVER,
                                   by=user, reason=f"Cover taken by {name_of(user)}: {which(cover)}.", pins=1, request=request)
     except in_force.Refused as refused:
         raise HttpError(409, str(refused)) from None

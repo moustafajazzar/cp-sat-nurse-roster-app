@@ -34,7 +34,7 @@ from notifications import sending
 from nurses import membership
 from nurses.models import NurseProfile
 from rosters import review
-from rosters.approved import Change
+from rosters.approved import NewCell
 from rosters.drafts import current_codes
 from rosters.models import Roster, RosterState, RosterVersion, VersionOrigin
 from rosters.versions import Grid, differences
@@ -218,7 +218,7 @@ class Unchanged:
 UNCHANGED = Unchanged()
 
 
-def _grid_after(held: Held, cells: Iterable[Change]) -> dict[str, dict[str, str]]:
+def _grid_after(held: Held, cells: Iterable[NewCell]) -> dict[str, dict[str, str]]:
     """The roster's grid with these cells set, in today's codes. A cell is a nurse's day on the grid, and a cell outside the grid,
     or of a nurse not held, is the origin's mistake, since judging refuses it first. A change of named nurses adds or takes away
     no row. A change of the whole month makes its rows the month's nurses first, as a re-plan's grid has them: a nurse no longer
@@ -239,7 +239,7 @@ def _grid_after(held: Held, cells: Iterable[Change]) -> dict[str, dict[str, str]
     return grid
 
 
-def change(held: Held, cells: Iterable[Change], *, origin: Origin, by: User, reason: str, pins: int,
+def change(held: Held, cells: Iterable[NewCell], *, origin: Origin, by: User, reason: str, pins: int,
            solve: Solve | None = None, request: HttpRequest | None = None) -> RosterVersion | Unchanged:
     """Changes the roster in force held by `held`: the next version, or `UNCHANGED` when no cell differs. `pins` is how many
     pins the origin made or ended for it, for the audit entry; `solve` the one the grid came from, if any; `request` the HTTP

@@ -18,7 +18,7 @@ from rosters.versions import Grid
 
 
 @dataclass(frozen=True)
-class Change:
+class NewCell:
     """One cell asked for: a nurse's date and what it should hold, a shift's code or None for a day off."""
     hospital_id: str
     date: dt.date
@@ -49,7 +49,7 @@ class ApprovedMonth:
     def shift_of(self, code: str | None) -> Shift | None:
         return self.shifts.get(current_code(code)) if code else None
 
-    def grid_after(self, changes: list[Change]) -> Grid:
+    def grid_after(self, changes: list[NewCell]) -> Grid:
         grid = copy.deepcopy(self.roster.grid)
         for change in changes:
             shift = self.shift_of(change.shift)
@@ -57,7 +57,7 @@ class ApprovedMonth:
         return grid
 
 
-def with_pins(solve_input: dict, month: ApprovedMonth, changes: list[Change]) -> dict:
+def with_pins(solve_input: dict, month: ApprovedMonth, changes: list[NewCell]) -> dict:
     """The input as the change would make it: each changed cell a pin, so the solver's `pin` rule holds the new cell, and a
     manager's pin there, which the change replaces, does not count against it."""
     edited = copy.deepcopy(solve_input)

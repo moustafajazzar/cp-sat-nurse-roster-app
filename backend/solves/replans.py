@@ -10,7 +10,7 @@ import logging
 from notifications.models import SolveOutcome
 from nurses import membership
 from rosters import in_force
-from rosters.approved import Change
+from rosters.approved import NewCell
 from rosters.drafts import FROZEN, in_current_codes
 from rosters.models import Roster, RosterState
 from rosters.pins import long_date
@@ -94,10 +94,10 @@ def finish(solve: Solve, result: dict | None, state: SolveState) -> SolveOutcome
     return _ended(solve, ReplanOutcome.VERSION, SolveOutcome.STOPPED_REPLANNED if stopped else SolveOutcome.REPLANNED)
 
 
-def _new_cells(in_force_grid: dict[str, dict[str, str]], grid: dict[str, dict[str, str]]) -> list[Change]:
+def _new_cells(in_force_grid: dict[str, dict[str, str]], grid: dict[str, dict[str, str]]) -> list[NewCell]:
     """The re-plan's grid as the cells it changes. Its rows are the month's nurses, which the whole-month hold makes the rows of
     the version: a nurse it has no row for has left the month and loses hers there, so she has no cell here."""
-    return [Change(nurse, dt.date.fromisoformat(day), code or None)
+    return [NewCell(nurse, dt.date.fromisoformat(day), code or None)
             for nurse, row in grid.items() for day, code in row.items()
             if in_force_grid.get(nurse, {}).get(day, "") != code]
 

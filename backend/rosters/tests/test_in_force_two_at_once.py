@@ -15,7 +15,7 @@ from nurses import membership
 from nurses.models import NurseProfile
 from nurses.tests.test_two_at_once import alongside
 from rosters import in_force
-from rosters.approved import Change
+from rosters.approved import NewCell
 from rosters.drafts import in_current_codes
 from rosters.models import Roster
 from rosters.tests.conftest import approved_roster, locks_on
@@ -47,7 +47,7 @@ def june(er) -> Roster:
     return approved_roster(er)
 
 
-def changed(unit, *cells: Change, reason="A change.") -> object:
+def changed(unit, *cells: NewCell, reason="A change.") -> object:
     with transaction.atomic():
         held = in_force.hold(unit.pk, JUNE, nurses={cell.hospital_id for cell in cells})
         return in_force.change(held, list(cells), origin=in_force.Origin.EDIT, by=User.objects.get(username="mona"),
@@ -81,8 +81,8 @@ def test_of_two_changes_at_once_the_second_waits_and_is_the_next_version_built_o
     """Different nurses' cells, so their locks do not meet: the second waits at the catalogue's, the first lock every change
     takes, and reads the roster only once the first has committed."""
     with transaction.atomic():
-        changed(er, Change("Amal", dt.date(2026, 6, 9), "N"))
-        second = alongside(pool, lambda: changed(er, Change("Badr", dt.date(2026, 6, 2), None), reason="Badr asked."))
+        changed(er, NewCell("Amal", dt.date(2026, 6, 9), "N"))
+        second = alongside(pool, lambda: changed(er, NewCell("Badr", dt.date(2026, 6, 2), None), reason="Badr asked."))
         assert not second.done()
 
     assert second.result().number == 3
@@ -96,7 +96,7 @@ def test_of_two_changes_at_once_the_second_waits_and_is_the_next_version_built_o
 def test_a_change_waits_for_a_shift_rename_and_then_holds_only_the_new_code(er, june, carla, pool):
     with transaction.atomic():
         assert change_shift(carla, "N", code="NT").status_code == 200
-        edit = alongside(pool, lambda: changed(er, Change("Amal", dt.date(2026, 6, 9), "N")))
+        edit = alongside(pool, lambda: changed(er, NewCell("Amal", dt.date(2026, 6, 9), "N")))
         assert not edit.done()
 
     assert edit.result().number == 2
@@ -108,7 +108,7 @@ def test_a_change_waits_for_a_shift_rename_and_then_holds_only_the_new_code(er, 
 
 def test_a_shift_rename_waits_for_a_change_and_then_follows_its_version(er, june, carla, pool):
     with transaction.atomic():
-        changed(er, Change("Amal", dt.date(2026, 6, 9), "N"))
+        changed(er, NewCell("Amal", dt.date(2026, 6, 9), "N"))
         rename = alongside(pool, lambda: change_shift(carla, "N", code="NT"))
         assert not rename.done()
 
@@ -185,7 +185,7 @@ class TestAReplansEnd:
     def test_an_edit_waits_for_it_and_builds_on_its_version(self, er, under_way, pool):
         with transaction.atomic():
             running.run(under_way)
-            edit = alongside(pool, lambda: changed(er, Change("Badr", dt.date(2026, 6, 20), "D"), reason="Badr asked."))
+            edit = alongside(pool, lambda: changed(er, NewCell("Badr", dt.date(2026, 6, 20), "D"), reason="Badr asked."))
             assert not edit.done()
 
         assert edit.result().number == 3
@@ -219,7 +219,7 @@ def test_a_leave_write_takes_no_catalogue_lock_and_holds_the_nurse_the_unit_then
 def test_leave_waits_for_a_change_to_the_same_nurse_and_comes_after_it(mona, er, june, pool):
     """The change holds the nurse's lock, which a leave write takes first."""
     with transaction.atomic():
-        changed(er, Change("Badr", dt.date(2026, 6, BADR_OFF), "D"))
+        changed(er, NewCell("Badr", dt.date(2026, 6, BADR_OFF), "D"))
         leave = alongside(pool, lambda: record_leave(mona, er, "Badr", BADR_WORKS))
         assert not leave.done()
 
@@ -236,7 +236,7 @@ def test_a_change_waits_for_leave_on_another_nurse_and_keeps_the_shift_it_took_o
     """Different nurses' locks do not meet: the unit's and the roster's are what order them."""
     with transaction.atomic():
         assert record_leave(mona, er, "Badr", BADR_WORKS).status_code == 201
-        edit = alongside(pool, lambda: changed(er, Change("Amal", dt.date(2026, 6, 9), "N")))
+        edit = alongside(pool, lambda: changed(er, NewCell("Amal", dt.date(2026, 6, 9), "N")))
         assert not edit.done()
 
     assert edit.result().number == 3

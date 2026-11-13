@@ -15,7 +15,7 @@ from notifications.models import Event, Notification, SolveOutcome
 from nurses import membership
 from hospital.models import HospitalSettings, Shift
 from nurses.models import Placement
-from rosters.approved import Change
+from rosters.approved import NewCell
 from rosters.in_force import Origin, hold
 from rosters.in_force import change as change_in_force
 from rosters.drafts import FROZEN
@@ -524,7 +524,7 @@ class TestAChangeWhileItWaitsOrRuns:
         """A change that leaves neither a pin nor leave behind, which only its version tells apart from the re-plan's start."""
         def a_change_with_nothing_else():
             held = hold(er.pk, dt.date(2026, 6, 1), nurses={"Badr"})
-            return change_in_force(held, [Change("Badr", dt.date(2026, 6, 20), "D")], origin=Origin.SWAP,
+            return change_in_force(held, [NewCell("Badr", dt.date(2026, 6, 20), "D")], origin=Origin.SWAP,
                                    by=User.objects.get(username="mona"), reason="A swap.", pins=0)
         while_it_runs(solver, a_change_with_nothing_else)
 

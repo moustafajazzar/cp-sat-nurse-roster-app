@@ -31,7 +31,7 @@ from rosters.drafts import current_code
 from rosters.models import PinOrigin, Roster
 from rosters.pins import long_date, pin_cell
 from swaps.expiring import expire_passed
-from swaps.judging import Change, judge, name_of, on_probation_said
+from swaps.judging import NewCell, judge, name_of, on_probation_said
 from swaps.models import Answer, Swap, SwapCell, SwapParticipant, SwapState
 from units.models import Unit
 from units.scope import unit_in_scope
@@ -57,7 +57,7 @@ def no_approved_roster(unit: Unit, month: dt.date) -> str:
     return f"The {unit.name} roster for {month:%B %Y} is not approved yet, so there is nothing to swap."
 
 
-def propose(user: User, month: dt.date, changes: list[Change], note: str, request: HttpRequest) -> Swap:
+def propose(user: User, month: dt.date, changes: list[NewCell], note: str, request: HttpRequest) -> Swap:
     """On the approved roster of the unit this month falls under for the proposer, held for her and every nurse named
     (`rosters.in_force.hold_where_placed`), so a transfer of hers that comes while this waits is the unit judged. Refused at
     once, with every reason, if a cell cannot hold its change or the grid would newly break a hard rule, each reason in the
@@ -165,8 +165,8 @@ def withdraw(user: User, swap_id: UUID, request: HttpRequest) -> Swap:
     return swap
 
 
-def changes_of(swap: Swap) -> list[Change]:
-    return [Change(cell.nurse.user.username, cell.date, cell.after.code if cell.after else None)
+def changes_of(swap: Swap) -> list[NewCell]:
+    return [NewCell(cell.nurse.user.username, cell.date, cell.after.code if cell.after else None)
             for cell in swap.cells.select_related("nurse__user", "after")]
 
 
