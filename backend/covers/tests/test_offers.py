@@ -164,6 +164,31 @@ class TestAccepting:
         changed_for = {note.user.username for note in Notification.objects.filter(event=Event.ROSTER_CHANGED)}
         assert changed_for == {"Amal", "Badr", "Dana"}
 
+    def test_both_audit_entries_of_an_acceptance_keep_her_address(self, in_force, mona):
+        cover_id = the_25th(mona, in_force)
+        offered(mona, in_force, cover_id, "Emad")
+
+        answered(as_user("Emad"), cover_id, "accept")
+
+        assert list(AuditEntry.objects.filter(action__in=("cover.accepted", "roster.changed")).values_list("ip", flat=True)) == [
+            "127.0.0.1", "127.0.0.1"]
+
+    def test_an_acceptance_that_would_change_no_cell_is_refused_with_nothing_saved(self, in_force, mona, monkeypatch):
+        """Amal works Day on the 25th. Judging refuses her for that, so only a judge that let her through could reach this."""
+        from covers.judging import CoverMonth
+        from covers.models import CoverOffer
+        cover_id = the_25th(mona, in_force)
+        CoverOffer.objects.create(cover_id=cover_id, nurse=NurseProfile.objects.get(user__username="Amal"))
+        monkeypatch.setattr(CoverMonth, "refusal_for", lambda self, hospital_id: [])
+
+        assert refusals(answer(as_user("Amal"), cover_id, "accept"), 409) == [
+            "Your cell already holds this cover's shift, so there is nothing to take."]
+        page = cover_page(mona, in_force, cover_id)
+        assert (page["cover"]["state"], answers(page)) == ("open", [("Amal", "pending")])
+        assert latest_version().number == 1
+        assert not PinnedCell.objects.filter(origin=PinOrigin.COVER).exists()
+        assert not AuditEntry.objects.filter(action__in=("cover.accepted", "roster.changed")).exists()
+
     def test_a_second_acceptance_is_refused_as_taken(self, in_force, mona):
         cover_id = the_25th(mona, in_force)
         offered(mona, in_force, cover_id, "Emad", "Dana")
