@@ -1,0 +1,74 @@
+# Caddy in front of the application. compose.yaml works out both variables from DOMAIN.
+#
+# With DOMAIN, the site is that name and `self-signed-off` adds only HSTS, so Caddy does what it
+# does for a public name: it obtains and renews a Let's Encrypt certificate.
+# Without DOMAIN, the site answers on any name or IP with a self-signed certificate from Caddy's
+# own local authority, issued on demand for whatever name the browser used.
+
+# The client's address. Caddy believes a client's X-Forwarded-For only from a peer named in TRUSTED_PROXIES (.env, empty by
+# default: no one), read strictly from the right, so the address taken is the one the nearest untrusted hop was seen at.
+# Only X-Forwarded-For is read, not X-Real-IP. The site sends what Caddy worked out to web in X-Client-IP.
+#
+# A client's body. The site reads it whole before web sees the request, so Caddy, not a web worker, waits on a
+# slow client. A body that stalls drops after a minute (read_body_idle, Caddy's default, written out to give it a rate),
+# and one averaging under 10 kB/s too: 10000 is bytes a second, counted from the body's start, each byte earning a tenth
+# of a millisecond on top of the minute. Once the body is in, Caddy clears the deadline. No read_body: Caddy gives it to Go
+# as a deadline on the whole request from its start, and Go cancels the request when it fires, after the body or not, so a
+# nurse import's confirmation or a backup's download that ran past it would be cut off. The other timeouts are Caddy's own
+# (headers 1 minute, idle 5 minutes, a stalled write 1 minute) and there is no write timeout, as a backup may be large.
+{
+	servers {
+		trusted_proxies static {$TRUSTED_PROXIES}
+		trusted_proxies_strict
+		client_ip_headers X-Forwarded-For
+		timeouts {
+			read_body_idle 1m 10000
+		}
+	}
+}
+
+# The DOMAIN mode: every answer tells the browser to reach this name over HTTPS alone for a year, renewed with
+# each answer. Only the name itself: no includeSubDomains, as the hospital's other names under it are not ours, and no
+# preload, which would outlive the installation. A self-signed installation never sends it, as a browser that took it from
+# an address or a name with an untrusted certificate would refuse the site with no way past the warning.
+(self-signed-off) {
+	header >Strict-Transport-Security "max-age=31536000"
+}
+
+(self-signed) {
+	tls internal {
+		on_demand
+	}
+}
+
+{$CADDY_SITE} {
+	import {$CADDY_TLS_SNIPPET}
+	# One content security policy on every answer passed on, deferred so that it replaces any web sent: never
+	# two. Only the app's own scripts, styles, images and connections, and images from data: URLs; no plugins, no <base>,
+	# forms posting only here, and no page framed by any site (web also answers X-Frame-Options: DENY).
+	# Widen it only where the browser checks show the built app needs it (e2e/support.ts fails a test that sees a
+	# violation). Caddy's own error pages, such as the 502 while web restarts, carry none.
+	header >Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+	# The metrics answer with no sign-in, for a Prometheus on the internal network only (backend/ops/metrics.py).
+	@metrics path /metrics /metrics/*
+	respond @metrics 404
+	# Above the nurse import's largest file, 1 MiB (nurses.importing.MAX_BYTES), and its multipart: 413 past 2,000,000 bytes,
+	# from Content-Length before a byte of the body is read.
+	request_body {
+		max_size 2MB
+	}
+	reverse_proxy web:8000 {
+		# Always set, replacing any a client sent: what audit.log.client_ip reads, the throttle's and the audit log's address.
+		header_up X-Client-IP {client_ip}
+		# The whole body, held before the request is opened to web. Larger than the cap: a body that fills the buffers
+		# exactly is passed on with the rest still to come from the client, so this one never fills them.
+		request_buffers 2MiB
+		# An idle connection to web is closed after 2 s. gunicorn keeps one open 10 s after an answer
+		# (--keep-alive in compose.yaml) and closes it then, so Caddy, letting go first, never sends a request down a
+		# connection gunicorn has just closed, which would answer a POST with 502. The 8 s between them leave room for an
+		# answer Caddy is still reading from the socket after gunicorn finished writing it, as for a slow client's download.
+		transport http {
+			keepalive 2s
+		}
+	}
+}

@@ -1,0 +1,31 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+frontend/.tanstack/
+frontend/dist/
+*.tsbuildinfo
+
+# Secrets: deploy/.env.example is the committed template
+.env
+!.env.example
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/
+
+# Solver CLI outputs
+result.json
+roster.csv
+solver/roster*.csv
+solver/result*.json
+solver/request*.json
+solver/problem.json
+
+

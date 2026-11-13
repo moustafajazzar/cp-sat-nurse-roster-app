@@ -1,0 +1,4 @@
+# The uv workspace: one lock file and one environment for the backend and the solver, which
+# ship in one image. Python 3.14 is the ceiling: OR-Tools 9.15 has no 3.15 wheels.
+[tool.uv.workspace]
+members = ["backend", "solver"]

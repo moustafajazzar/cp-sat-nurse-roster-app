@@ -1,0 +1,995 @@
+{
+ "version": 1,
+ "month": "2026-03",
+ "ramadan_days": {
+  "from": "2026-02-18",
+  "to": "2026-03-19"
+ },
+ "public_holidays": [],
+ "general": {
+  "shift_hours": {
+   "D": 12,
+   "N": 12,
+   "A": 8,
+   "B": 8,
+   "C": 8
+  },
+  "hours_per_day": 8,
+  "ramadan_hours_per_day": 6,
+  "breastfeeding_reduction": 1,
+  "weekend_weekdays": [
+   4
+  ],
+  "forbidden_successions": [
+   [
+    "D",
+    "C"
+   ],
+   [
+    "N",
+    "D"
+   ],
+   [
+    "N",
+    "A"
+   ],
+   [
+    "N",
+    "B"
+   ],
+   [
+    "A",
+    "B"
+   ],
+   [
+    "A",
+    "C"
+   ],
+   [
+    "B",
+    "D"
+   ],
+   [
+    "C",
+    "D"
+   ],
+   [
+    "C",
+    "A"
+   ],
+   [
+    "C",
+    "B"
+   ]
+  ],
+  "forbidden_successions_enabled": true,
+  "hours_rule_enabled": true,
+  "overtime_caps_enabled": true,
+  "overtime_month_cap": 40,
+  "overtime_year_cap": 720,
+  "dept_overtime_cap": 400,
+  "weights": {
+   "night_rest": 5,
+   "dept_overtime": 1,
+   "nurse_overtime": 1,
+   "nurse_shortfall": 1,
+   "avoidable_shortfall": 1000,
+   "fair_day": 1,
+   "fair_night": 1,
+   "fair_weekend": 1,
+   "score_deficit": 2,
+   "score_spread": 1,
+   "excess_weekend": 6,
+   "shift_switch": 8,
+   "undesired_day": 2,
+   "desired_day": 1,
+   "change": 3
+  }
+ },
+ "department": {
+  "name": "ER",
+  "shifts": [
+   "D",
+   "N"
+  ],
+  "headcounts": [
+   {
+    "shift": "D",
+    "weekday_min": 7,
+    "weekday_max": 9,
+    "weekend_min": 8,
+    "weekend_max": 9,
+    "also_counts": []
+   },
+   {
+    "shift": "N",
+    "weekday_min": 7,
+    "weekday_max": 9,
+    "weekend_min": 8,
+    "weekend_max": 9,
+    "also_counts": []
+   }
+  ],
+  "headcount_enabled": true,
+  "require_team_leader": true,
+  "require_both_genders": true,
+  "score_target": 0.7,
+  "score_target_weekend": 0.8,
+  "score_balance": true,
+  "score_balance_mode": "band",
+  "score_band_hi": 0.78,
+  "score_band_hi_weekend": 0.88,
+  "night_shift": "N",
+  "day_shift": "D",
+  "night_rest_days": 2,
+  "night_rest_hard": true,
+  "fair_shifts": [
+   "D",
+   "N"
+  ],
+  "fair_tolerance": 0.5,
+  "fair_weekends": true,
+  "carry_fairness": true,
+  "carry_cap": 2.0,
+  "max_consecutive_shifts": 3,
+  "double_cycle_rest": 2,
+  "max_weekends": 3,
+  "no_mixed_blocks": true,
+  "max_switches": 2,
+  "switches_hard": false
+ },
+ "nurses": [
+  {
+   "id": "N01",
+   "gender": "M",
+   "team_leader": true,
+   "score": 0.99,
+   "ramadan_reduced": false,
+   "breastfeeding": false,
+   "ytd_overtime": 300,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [
+    "2026-03-25"
+   ],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": null,
+   "previous": [
+    "D",
+    "N",
+    "N",
+    "",
+    "N",
+    "",
+    "D",
+    "D",
+    "",
+    ""
+   ]
+  },
+  {
+   "id": "N02",
+   "gender": "M",
+   "team_leader": true,
+   "score": 0.99,
+   "ramadan_reduced": false,
+   "breastfeeding": false,
+   "ytd_overtime": 700,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [
+    "2026-03-18"
+   ],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": null,
+   "previous": [
+    "N",
+    "N",
+    "",
+    "",
+    "D",
+    "",
+    "N",
+    "N",
+    "N",
+    ""
+   ]
+  },
+  {
+   "id": "N03",
+   "gender": "M",
+   "team_leader": true,
+   "score": 0.95,
+   "ramadan_reduced": false,
+   "breastfeeding": false,
+   "ytd_overtime": 100,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [
+    "2026-03-16",
+    "2026-03-27"
+   ],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": null,
+   "previous": [
+    "D",
+    "",
+    "",
+    "D",
+    "",
+    "",
+    "N",
+    "N",
+    "N",
+    ""
+   ]
+  },
+  {
+   "id": "N04",
+   "gender": "F",
+   "team_leader": true,
+   "score": 0.95,
+   "ramadan_reduced": false,
+   "breastfeeding": false,
+   "ytd_overtime": 700,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": [
+    "D"
+   ],
+   "previous": [
+    "D",
+    "",
+    "",
+    "D",
+    "",
+    "",
+    "D",
+    "D",
+    "D",
+    ""
+   ]
+  },
+  {
+   "id": "N05",
+   "gender": "M",
+   "team_leader": true,
+   "score": 0.92,
+   "ramadan_reduced": false,
+   "breastfeeding": false,
+   "ytd_overtime": 100,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [],
+   "undesired_days": [
+    "2026-03-09",
+    "2026-03-22"
+   ],
+   "desired_days": [
+    "2026-03-16"
+   ],
+   "pinned": {},
+   "allowed_shifts": null,
+   "previous": [
+    "D",
+    "",
+    "",
+    "N",
+    "N",
+    "N",
+    "",
+    "N",
+    "",
+    ""
+   ],
+   "preferences_not_kept": 1
+  },
+  {
+   "id": "N06",
+   "gender": "F",
+   "team_leader": true,
+   "score": 0.92,
+   "ramadan_reduced": false,
+   "breastfeeding": false,
+   "ytd_overtime": 0,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [
+    "2026-03-16"
+   ],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": null,
+   "previous": [
+    "D",
+    "N",
+    "",
+    "",
+    "D",
+    "",
+    "N",
+    "N",
+    "N",
+    ""
+   ]
+  },
+  {
+   "id": "N07",
+   "gender": "M",
+   "team_leader": false,
+   "score": 0.89,
+   "ramadan_reduced": false,
+   "breastfeeding": false,
+   "ytd_overtime": 100,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [
+    "2026-03-06",
+    "2026-03-08",
+    "2026-03-11",
+    "2026-03-12",
+    "2026-03-26"
+   ],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": null,
+   "previous": [
+    "D",
+    "",
+    "D",
+    "N",
+    "",
+    "D",
+    "",
+    "D",
+    "",
+    ""
+   ]
+  },
+  {
+   "id": "N08",
+   "gender": "M",
+   "team_leader": false,
+   "score": 0.79,
+   "ramadan_reduced": false,
+   "breastfeeding": false,
+   "ytd_overtime": 700,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": null,
+   "previous": [
+    "N",
+    "",
+    "D",
+    "",
+    "",
+    "N",
+    "N",
+    "",
+    "N",
+    ""
+   ]
+  },
+  {
+   "id": "N09",
+   "gender": "M",
+   "team_leader": false,
+   "score": 0.79,
+   "ramadan_reduced": false,
+   "breastfeeding": false,
+   "ytd_overtime": 700,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [
+    "2026-03-04",
+    "2026-03-23"
+   ],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": null,
+   "previous": [
+    "D",
+    "D",
+    "N",
+    "",
+    "",
+    "N",
+    "",
+    "N",
+    "",
+    ""
+   ]
+  },
+  {
+   "id": "N10",
+   "gender": "F",
+   "team_leader": false,
+   "score": 0.79,
+   "ramadan_reduced": false,
+   "breastfeeding": false,
+   "ytd_overtime": 100,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [
+    "2026-03-17",
+    "2026-03-28"
+   ],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": null,
+   "previous": [
+    "D",
+    "N",
+    "N",
+    "",
+    "D",
+    "N",
+    "",
+    "N",
+    "",
+    ""
+   ]
+  },
+  {
+   "id": "N11",
+   "gender": "F",
+   "team_leader": false,
+   "score": 0.78,
+   "ramadan_reduced": false,
+   "breastfeeding": false,
+   "ytd_overtime": 300,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [
+    "2026-03-10",
+    "2026-03-22"
+   ],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": [
+    "D"
+   ],
+   "previous": [
+    "D",
+    "D",
+    "",
+    "D",
+    "D",
+    "D",
+    "",
+    "D",
+    "",
+    ""
+   ]
+  },
+  {
+   "id": "N12",
+   "gender": "F",
+   "team_leader": false,
+   "score": 0.77,
+   "ramadan_reduced": false,
+   "breastfeeding": false,
+   "ytd_overtime": 0,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [
+    "2026-03-14",
+    "2026-03-19",
+    "2026-03-22",
+    "2026-03-28",
+    "2026-03-29"
+   ],
+   "undesired_days": [
+    "2026-03-21",
+    "2026-03-26"
+   ],
+   "desired_days": [
+    "2026-03-15"
+   ],
+   "pinned": {},
+   "allowed_shifts": null,
+   "previous": [
+    "",
+    "",
+    "D",
+    "D",
+    "N",
+    "",
+    "",
+    "N",
+    "N",
+    ""
+   ]
+  },
+  {
+   "id": "N13",
+   "gender": "F",
+   "team_leader": false,
+   "score": 0.71,
+   "ramadan_reduced": false,
+   "breastfeeding": false,
+   "ytd_overtime": 100,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [
+    "2026-03-07"
+   ],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": [
+    "N"
+   ],
+   "previous": [
+    "N",
+    "",
+    "",
+    "N",
+    "N",
+    "",
+    "N",
+    "",
+    "N",
+    ""
+   ]
+  },
+  {
+   "id": "N14",
+   "gender": "F",
+   "team_leader": false,
+   "score": 0.71,
+   "ramadan_reduced": true,
+   "breastfeeding": false,
+   "ytd_overtime": 500,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": null,
+   "previous": [
+    "D",
+    "N",
+    "",
+    "",
+    "N",
+    "",
+    "N",
+    "N",
+    "N",
+    ""
+   ]
+  },
+  {
+   "id": "N15",
+   "gender": "M",
+   "team_leader": false,
+   "score": 0.7,
+   "ramadan_reduced": true,
+   "breastfeeding": false,
+   "ytd_overtime": 700,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": null,
+   "previous": [
+    "N",
+    "N",
+    "N",
+    "",
+    "",
+    "N",
+    "N",
+    "N",
+    "",
+    ""
+   ]
+  },
+  {
+   "id": "N16",
+   "gender": "M",
+   "team_leader": false,
+   "score": 0.7,
+   "ramadan_reduced": true,
+   "breastfeeding": false,
+   "ytd_overtime": 300,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [
+    "2026-03-06",
+    "2026-03-07"
+   ],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": null,
+   "previous": [
+    "N",
+    "",
+    "N",
+    "",
+    "N",
+    "",
+    "",
+    "D",
+    "N",
+    ""
+   ]
+  },
+  {
+   "id": "N17",
+   "gender": "M",
+   "team_leader": false,
+   "score": 0.69,
+   "ramadan_reduced": true,
+   "breastfeeding": false,
+   "ytd_overtime": 0,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [
+    "2026-03-24"
+   ],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": null,
+   "previous": [
+    "N",
+    "N",
+    "",
+    "",
+    "N",
+    "N",
+    "",
+    "N",
+    "",
+    ""
+   ]
+  },
+  {
+   "id": "N18",
+   "gender": "F",
+   "team_leader": false,
+   "score": 0.68,
+   "ramadan_reduced": false,
+   "breastfeeding": false,
+   "ytd_overtime": 500,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": null,
+   "previous": [
+    "D",
+    "N",
+    "",
+    "",
+    "D",
+    "D",
+    "N",
+    "",
+    "D",
+    ""
+   ]
+  },
+  {
+   "id": "N19",
+   "gender": "F",
+   "team_leader": false,
+   "score": 0.68,
+   "ramadan_reduced": false,
+   "breastfeeding": false,
+   "ytd_overtime": 700,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [
+    "2026-03-01",
+    "2026-03-02",
+    "2026-03-04",
+    "2026-03-08",
+    "2026-03-13"
+   ],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": null,
+   "previous": [
+    "D",
+    "N",
+    "N",
+    "",
+    "D",
+    "N",
+    "",
+    "D",
+    "N",
+    ""
+   ]
+  },
+  {
+   "id": "N20",
+   "gender": "F",
+   "team_leader": false,
+   "score": 0.64,
+   "ramadan_reduced": true,
+   "breastfeeding": false,
+   "ytd_overtime": 100,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": null,
+   "previous": [
+    "",
+    "",
+    "D",
+    "D",
+    "",
+    "D",
+    "D",
+    "D",
+    "",
+    ""
+   ]
+  },
+  {
+   "id": "N21",
+   "gender": "M",
+   "team_leader": false,
+   "score": 0.52,
+   "ramadan_reduced": false,
+   "breastfeeding": false,
+   "ytd_overtime": 100,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [
+    "2026-03-12"
+   ],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": null,
+   "previous": [
+    "N",
+    "N",
+    "N",
+    "",
+    "",
+    "N",
+    "N",
+    "N",
+    "",
+    ""
+   ]
+  },
+  {
+   "id": "N22",
+   "gender": "F",
+   "team_leader": false,
+   "score": 0.5,
+   "ramadan_reduced": false,
+   "breastfeeding": false,
+   "ytd_overtime": 0,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [
+    "2026-03-16"
+   ],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": null,
+   "previous": [
+    "",
+    "",
+    "D",
+    "",
+    "",
+    "D",
+    "N",
+    "N",
+    "",
+    ""
+   ]
+  },
+  {
+   "id": "N23",
+   "gender": "M",
+   "team_leader": false,
+   "score": 0.5,
+   "ramadan_reduced": true,
+   "breastfeeding": true,
+   "ytd_overtime": 0,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [
+    "2026-03-03",
+    "2026-03-16",
+    "2026-03-17",
+    "2026-03-23",
+    "2026-03-26"
+   ],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": null,
+   "previous": [
+    "N",
+    "N",
+    "",
+    "N",
+    "",
+    "",
+    "N",
+    "N",
+    "N",
+    ""
+   ]
+  },
+  {
+   "id": "N24",
+   "gender": "F",
+   "team_leader": false,
+   "score": 0.48,
+   "ramadan_reduced": false,
+   "breastfeeding": true,
+   "ytd_overtime": 500,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [
+    "2026-03-03",
+    "2026-03-22"
+   ],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": null,
+   "previous": [
+    "",
+    "N",
+    "N",
+    "",
+    "D",
+    "",
+    "N",
+    "N",
+    "",
+    ""
+   ]
+  },
+  {
+   "id": "N25",
+   "gender": "M",
+   "team_leader": false,
+   "score": 0.45,
+   "ramadan_reduced": false,
+   "breastfeeding": false,
+   "ytd_overtime": 500,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [],
+   "undesired_days": [],
+   "desired_days": [],
+   "pinned": {},
+   "allowed_shifts": null,
+   "previous": [
+    "",
+    "N",
+    "",
+    "",
+    "D",
+    "",
+    "",
+    "D",
+    "N",
+    ""
+   ]
+  }
+ ],
+ "solver": {
+  "time_limit_seconds": 5,
+  "reproducible": false
+ }
+}

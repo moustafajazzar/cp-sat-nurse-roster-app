@@ -1,0 +1,16 @@
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/node_modules
+frontend/dist
+.git
+.github
+docs
+deploy
+solver/tests
+solver/service_tests
+backend/**/tests
+e2e
+*.md
+!solver/README.md

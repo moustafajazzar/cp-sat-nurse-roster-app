@@ -1,0 +1,6 @@
+# For deploy/tests/operations.sh only: the stack on ports of its own, so it can run beside another. The worker keeps
+# deploy/compose.yaml's `egress`, its way out for pushes.
+services:
+  caddy:
+    ports: !override
+      - "127.0.0.1:${TEST_HTTPS_PORT:-18443}:443"

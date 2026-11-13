@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- The app's icon: a month's grid on the app's own near-black. Everything that matters sits inside the central circle of
+       radius 205, so the maskable variant survives any launcher's mask. The favicon, and the source of the PNGs the manifest
+       and iOS use: e2e/render-icons.mjs renders them. -->
+  <rect width="512" height="512" fill="#171717"/>
+  <rect x="136" y="148" width="240" height="224" rx="24" fill="#fafafa"/>
+  <rect x="136" y="148" width="240" height="56" rx="24" fill="#a3a3a3"/>
+  <rect x="136" y="180" width="240" height="24" fill="#a3a3a3"/>
+  <rect x="184" y="124" width="20" height="52" rx="10" fill="#fafafa"/>
+  <rect x="308" y="124" width="20" height="52" rx="10" fill="#fafafa"/>
+  <g fill="#171717">
+    <rect x="164" y="228" width="40" height="36" rx="6"/>
+    <rect x="236" y="228" width="40" height="36" rx="6"/>
+    <rect x="308" y="228" width="40" height="36" rx="6"/>
+    <rect x="164" y="288" width="40" height="36" rx="6"/>
+    <rect x="308" y="288" width="40" height="36" rx="6"/>
+  </g>
+  <rect x="236" y="288" width="40" height="36" rx="6" fill="#0284c7"/>
+</svg>

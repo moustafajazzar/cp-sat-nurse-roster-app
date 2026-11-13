@@ -1,0 +1,185 @@
+{
+ "version": 2,
+ "month": "2026-06",
+ "ramadan_days": [],
+ "public_holidays": [],
+ "general": {
+  "shift_hours": {
+   "D": 12,
+   "N": 12
+  },
+  "hours_per_day": 8,
+  "ramadan_hours_per_day": 6,
+  "breastfeeding_reduction": 1,
+  "weekend_weekdays": [
+   4
+  ],
+  "forbidden_successions": [
+   [
+    "N",
+    "D"
+   ]
+  ],
+  "forbidden_successions_enabled": true,
+  "hours_rule_enabled": true,
+  "overtime_caps_enabled": true,
+  "overtime_month_cap": 40,
+  "overtime_year_cap": 720,
+  "dept_overtime_cap": 400,
+  "weights": {
+   "night_rest": 0,
+   "dept_overtime": 1,
+   "nurse_overtime": 1,
+   "nurse_shortfall": 1,
+   "avoidable_shortfall": 1000,
+   "fair_day": 1,
+   "fair_night": 1,
+   "fair_weekend": 1,
+   "overtime_above_share": 1,
+   "score_deficit": 0,
+   "score_spread": 0,
+   "excess_weekend": 0,
+   "excess_full_run": 4,
+   "shift_switch": 8,
+   "undesired_day": 2,
+   "desired_day": 1,
+   "change": 3,
+   "skill_shortfall": 0
+  },
+  "required_skills": []
+ },
+ "department": {
+  "name": "Ward A",
+  "shifts": [
+   "D",
+   "N"
+  ],
+  "headcounts": [
+   {
+    "shift": "D",
+    "weekday_min": 1,
+    "weekday_max": 1,
+    "weekend_min": 1,
+    "weekend_max": 1,
+    "also_counts": []
+   },
+   {
+    "shift": "N",
+    "weekday_min": 1,
+    "weekday_max": 2,
+    "weekend_min": 1,
+    "weekend_max": 2,
+    "also_counts": []
+   }
+  ],
+  "headcount_enabled": true,
+  "require_team_leader": false,
+  "require_both_genders": false,
+  "score_target": 0.0,
+  "score_target_weekend": 0.0,
+  "score_balance": false,
+  "score_balance_mode": "band",
+  "score_band_hi": 1.0,
+  "score_band_hi_weekend": 1.0,
+  "night_shift": "N",
+  "day_shift": "D",
+  "night_rest_days": 2,
+  "night_rest_hard": true,
+  "fair_shifts": [
+   "D",
+   "N"
+  ],
+  "fair_tolerance": 0.5,
+  "fair_weekends": true,
+  "carry_fairness": true,
+  "carry_cap": 2.0,
+  "share_overtime": true,
+  "overtime_tolerance": 12,
+  "overtime_carry_cap": 12,
+  "max_consecutive_shifts": 4,
+  "double_cycle_rest": 2,
+  "max_weekends": 3,
+  "max_full_runs": 3,
+  "no_mixed_blocks": true,
+  "max_switches": 2,
+  "switches_hard": false,
+  "skill_needs": [],
+  "skill_needs_hard": true
+ },
+ "nurses": [
+  {
+   "id": "Amal",
+   "gender": "F",
+   "team_leader": true,
+   "score": 0.9,
+   "ramadan_reduced": false,
+   "breastfeeding": false,
+   "ytd_overtime": 0,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0
+  },
+  {
+   "id": "Badr",
+   "gender": "M",
+   "team_leader": false,
+   "score": 0.8,
+   "ramadan_reduced": false,
+   "breastfeeding": false,
+   "ytd_overtime": 0,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "leave": [
+    "2026-06-10",
+    "2026-06-11"
+   ]
+  },
+  {
+   "id": "Dana",
+   "gender": "F",
+   "team_leader": false,
+   "score": 0.7,
+   "ramadan_reduced": false,
+   "breastfeeding": true,
+   "ytd_overtime": 0,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "undesired_days": [
+    "2026-06-05"
+   ],
+   "desired_days": [
+    "2026-06-12"
+   ],
+   "preferences_not_kept": 1
+  },
+  {
+   "id": "Emad",
+   "gender": "M",
+   "team_leader": true,
+   "score": 0.6,
+   "ramadan_reduced": false,
+   "breastfeeding": false,
+   "ytd_overtime": 0,
+   "hours_balance": 0,
+   "night_balance": 0.0,
+   "friday_balance": 0.0,
+   "last_shift_kind": null,
+   "rest_owed": 0,
+   "allowed_shifts": [
+    "D"
+   ]
+  }
+ ],
+ "solver": {
+  "time_limit_seconds": 10,
+  "reproducible": false
+ }
+}

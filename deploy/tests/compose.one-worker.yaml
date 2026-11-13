@@ -1,0 +1,10 @@
+# For deploy/tests/operations.sh's check that Caddy holds a client's body only, on top of compose.yaml and compose.test.yaml: web at one gunicorn
+# worker of one thread, so that a request held on its body, if Caddy passed one on, would leave nothing to answer anyone. The
+# same kind of worker and keep-alive as compose.yaml's, at one worker of one thread.
+# `prepare` has run at the stack's first start. The script puts web back on compose.yaml's command after the check.
+services:
+  web:
+    command: >-
+      sh -c "unset INITIAL_ADMIN_PASSWORD
+      && exec gunicorn config.wsgi -c config/gunicorn.py --bind 0.0.0.0:8000
+      --worker-class gthread --workers 1 --threads 1 --keep-alive 10"
