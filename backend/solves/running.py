@@ -16,12 +16,10 @@ from notifications.models import SolveOutcome
 from ops import solver_client
 from ops.queue import still_on_the_queue
 from ops.solver_client import SolverBusy, SolverJobUnknown, SolverRefused, SolverUnreachable
-from rosters import drafts, review
-from rosters.models import Roster
+from rosters import drafts
 from solves import replans
 from solves.models import ACTIVE_STATES, Solve, SolveFailure, SolveState
 from solves.result import has_a_roster_to_keep
-from units.models import Unit
 
 logger = logging.getLogger(__name__)
 
@@ -175,12 +173,9 @@ def _finish(solve: Solve, job: dict) -> None:
         if result is not None:
             fields |= {"best_cost": result["cost"], "improvements": result["solver"]["improvements"]}
         _end(solve, **fields)
-        # This solve's own row is written before the locks below, as for a plain solve. No leave, edit or approval locks a solve's
-        # row, and a stop takes only that row, so it adds no wait to the order they share.
+        # This solve's own row is written before any other lock a re-plan's end takes, as for a plain solve. No leave, edit or
+        # approval locks a solve's row, and a stop takes only that row, so it adds no wait to the order they share.
         if solve.replan_from:
-            # Then the month's nurses which a leave write takes, and the unit's, as an approval takes them; the roster's last.
-            review.lock_the_months_nurses(solve.unit, solve.month, Roster.objects.filter(unit=solve.unit, month=solve.month).first())
-            Unit.objects.select_for_update().get(pk=solve.unit_id)
             outcome = replans.finish(solve, result, state)
             sending.solve_ended(solve.unit_id, solve.month, solve.pk, outcome, replan=True)
             return

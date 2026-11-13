@@ -384,6 +384,8 @@ class TestFactsBeforeTheDate:
         assert set(solve.input["published"]["Faris"].values()) == {""}
         assert facts(solve.input)["Faris"] == dict.fromkeys(range(11), "")
         assert "Amal" not in roster(er).grid and solve.replan_outcome == ReplanOutcome.VERSION
+        assert set(roster(er).grid) == {"Badr", "Dana", "Emad", "Faris"} and set(roster(er).grid["Faris"].values()) == {""}
+        in_force_agrees(er)
 
 
 def moved(**cells) -> dict:

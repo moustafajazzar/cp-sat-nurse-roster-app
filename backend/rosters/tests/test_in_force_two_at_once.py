@@ -11,6 +11,7 @@ from django.test.utils import CaptureQueriesContext
 from accounts.models import User
 from conftest import post
 from hospital.models import LeaveType
+from nurses import membership
 from nurses.models import NurseProfile
 from nurses.tests.test_two_at_once import alongside
 from rosters import in_force
@@ -21,6 +22,8 @@ from rosters.tests.conftest import approved_roster
 from rosters.tests.test_pins import change_shift, pin
 from rosters.tests.test_review import BADR_OFF, BADR_WORKS, carla, record_leave  # noqa: F401
 from rosters.tests.test_versions import change
+from solves import running
+from solves.models import ReplanOutcome, Solve
 from solves.tests.conftest import empty_queue  # noqa: F401
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -140,6 +143,54 @@ def test_a_whole_month_hold_waits_on_any_nurse_of_the_month_and_a_named_one_only
         assert not whole.done()
 
     whole.result()
+
+
+class TestAReplansEnd:
+    """A re-plan's end holds the whole month, so a leave or an edit either comes before it, and is then what makes its roster out
+    of date, or after it, on top of the version it made. In the roster in force Amal is off on the 15th and Emad works Day; the
+    re-plan swaps them."""
+
+    @pytest.fixture
+    def under_way(self, mona, er, june, solver, monkeypatch):
+        from rosters.tests.test_replan import SWAPPED, answered, started
+        monkeypatch.setattr(membership, "today", lambda: dt.date(2026, 6, 12))
+        solver.script([answered(SWAPPED)])
+        return started(mona, er)["id"]
+
+    def test_it_waits_for_leave_on_a_day_off_and_then_leaves_its_roster_out(self, mona, er, under_way, pool):
+        """The leave makes no version, as Amal is off that day: what the end must not miss is that she is on leave now."""
+        with transaction.atomic():
+            assert record_leave(mona, er, "Amal", 15).status_code == 201
+            end = alongside(pool, lambda: running.run(under_way))
+            assert not end.done()
+
+        end.result()
+        assert Solve.objects.get(pk=under_way).replan_outcome == ReplanOutcome.OUTDATED
+        roster = in_force_now(er)
+        assert roster.versions.first().number == 1 and roster.grid["Amal"]["2026-06-15"] == ""
+
+    def test_leave_waits_for_it_and_then_takes_its_shift_off_as_the_next_version(self, mona, er, under_way, pool):
+        with transaction.atomic():
+            running.run(under_way)
+            leave = alongside(pool, lambda: record_leave(mona, er, "Amal", 15))
+            assert not leave.done()
+
+        assert leave.result().status_code == 201
+        roster = in_force_now(er)
+        assert list(roster.versions.order_by("number").values_list("number", "origin")) == [
+            (1, "solve"), (2, "replan"), (3, "edit")]
+        assert roster.grid["Amal"]["2026-06-15"] == "" and roster.grid["Emad"]["2026-06-15"] == ""
+        assert roster.grid == roster.versions.first().grid
+
+    def test_an_edit_waits_for_it_and_builds_on_its_version(self, er, under_way, pool):
+        with transaction.atomic():
+            running.run(under_way)
+            edit = alongside(pool, lambda: changed(er, Change("Badr", dt.date(2026, 6, 20), "D"), why="Badr asked."))
+            assert not edit.done()
+
+        assert edit.result().number == 3
+        latest = in_force_now(er).versions.first()
+        assert latest.grid["Amal"]["2026-06-15"] == "D" and latest.grid["Badr"]["2026-06-20"] == "D"
 
 
 def leave_over_the_month_end(client, unit):

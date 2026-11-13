@@ -1,20 +1,19 @@
 """Re-planning an approved month from a date. A re-plan is a solve: the same queue, one active a unit, the same progress,
 stop and retry. What differs is its input (`solves.input.assemble_replan`) and its end: its roster becomes a new version of the
-roster in force (`rosters.versions.make_version`), passing on purpose the freeze `rosters.drafts.why_frozen` puts on a solve of an
+roster in force (`rosters.in_force.change`), passing on purpose the freeze `rosters.drafts.why_frozen` puts on a solve of an
 approved month. Everything that decides whether one may start, and what its end does, is here."""
 from __future__ import annotations
 
 import datetime as dt
 import logging
 
-from audit.log import record
-from notifications import sending
 from notifications.models import SolveOutcome
 from nurses import membership
+from rosters import in_force
+from rosters.approved import Change
 from rosters.drafts import FROZEN, in_current_codes
-from rosters.models import Roster, RosterState, VersionOrigin
+from rosters.models import Roster, RosterState
 from rosters.pins import long_date
-from rosters.versions import differences, make_version
 from solves.input import changes_since
 from solves.models import ACTIVE_STATES, ReplanOutcome, Solve, SolveState, why_not_another_month
 from solves.result import has_a_roster_to_keep
@@ -66,35 +65,47 @@ def reason_for(solve: Solve) -> str:
 
 
 def finish(solve: Solve, result: dict | None, state: SolveState) -> SolveOutcome:
-    """A re-plan's end, holding the catalogue's lock, the month's nurses' (`FOR NO KEY UPDATE`), the unit's and the roster's, in
-    that order, as an approval takes them, so no leave, edit or rename passes between deciding and writing. A roster it found
-    becomes a new version only while nothing it was given has moved: the version it started from is still in force, and the
-    month's nurses, leave and pins are as its input holds them. Otherwise its roster would undo what came since, such as a shift
-    leave took off, so it is kept in the history and the manager re-plans again. A rename is no change: the grid is carried to
-    today's codes. A roster that changes no cell makes no version and tells no nurse, as a direct edit that changes none is
-    refused. A stopped re-plan's best roster goes in force like a finished one's, as a stopped solve's becomes the draft."""
-    roster = Roster.objects.select_for_update(of=("self",)).get(unit=solve.unit, month=solve.month)
+    """A re-plan's end, holding the whole month as a change does (`rosters.in_force.hold`), so no leave, edit or rename passes
+    between deciding and writing. A roster it found becomes a new version only while nothing it was given has moved: the
+    version it started from is still in force, and the month's nurses, leave and pins are as its input holds them. Otherwise its
+    roster would undo what came since, such as a shift leave took off, so it is kept in the history and the manager re-plans
+    again. A rename is no change: the grid is carried to today's codes. A roster that changes no cell makes no version and tells
+    no nurse, as a direct edit that changes none is refused. A stopped re-plan's best roster goes in force like a finished one's,
+    as a stopped solve's becomes the draft."""
+    held = in_force.hold(solve.unit_id, solve.month, nurses=in_force.WHOLE_MONTH)
     stopped = state == SolveState.CANCELLED
     if not has_a_roster_to_keep(result):
         return _ended(solve, None, SolveOutcome.NO_ROSTER)
-    if solve.month < membership.this_month():
+    # A month over is answered before anything outdated, so a month both over and moved on reads as over, as it always has;
+    # and a roster that is not approved is one that moved on.
+    if held.month_over:
         return _ended(solve, ReplanOutcome.MONTH_OVER, SolveOutcome.REPLAN_MONTH_OVER)
-    latest = roster.versions.first()
-    if roster.state != RosterState.APPROVED or latest is None or latest.number != solve.replan_of \
-            or changes_since(solve.input, solve.unit, solve.month):
+    roster = held.roster
+    latest = roster.versions.first() if held.approved else None
+    if latest is None or latest.number != solve.replan_of or changes_since(solve.input, solve.unit, solve.month):
         return _ended(solve, ReplanOutcome.OUTDATED, SolveOutcome.REPLAN_OUTDATED)
-    grid = in_current_codes(result["roster"])
-    cells = len(differences(roster.grid, grid))
-    if not cells:
+    try:
+        made = in_force.change(held, _cells_changed(roster.grid, in_current_codes(result["roster"])),
+                               origin=in_force.Origin.REPLAN, by=solve.requested_by, why=reason_for(solve), pins=0,
+                               solve=solve)
+    except in_force.MonthOver:
+        return _ended(solve, ReplanOutcome.MONTH_OVER, SolveOutcome.REPLAN_MONTH_OVER)
+    except in_force.Refused:
+        return _ended(solve, ReplanOutcome.OUTDATED, SolveOutcome.REPLAN_OUTDATED)
+    if made is in_force.UNCHANGED:
         return _ended(solve, ReplanOutcome.UNCHANGED, SolveOutcome.REPLAN_UNCHANGED)
-    version = make_version(roster, grid, VersionOrigin.REPLAN, solve.requested_by, reason_for(solve), solve=solve)
     # The grid is this solve's now: clearing a pin gives a cell back to it, and the page's details are its.
     roster.solve = solve
     roster.save(update_fields=["solve", "updated_at"])
-    record("roster.changed", actor=solve.requested_by, target=solve.audit_target,
-           after={"version": version.number, "pins": 0, "cells": cells})
-    sending.roster_changed(solve.unit, solve.month, solve.requested_by)
     return _ended(solve, ReplanOutcome.VERSION, SolveOutcome.STOPPED_REPLANNED if stopped else SolveOutcome.REPLANNED)
+
+
+def _cells_changed(in_force_grid: dict[str, dict[str, str]], grid: dict[str, dict[str, str]]) -> list[Change]:
+    """The re-plan's grid as the cells it changes. Its rows are the month's nurses, which the whole-month hold makes the rows of
+    the version: a nurse it has no row for has left the month and loses hers there, so she has no cell here."""
+    return [Change(nurse, dt.date.fromisoformat(day), code or None)
+            for nurse, row in grid.items() for day, code in row.items()
+            if in_force_grid.get(nurse, {}).get(day, "") != code]
 
 
 def _ended(solve: Solve, outcome: ReplanOutcome | None, told: SolveOutcome) -> SolveOutcome:
