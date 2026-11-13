@@ -66,9 +66,9 @@ def _placement_of(user: User, month: dt.date) -> tuple[NurseProfile | None, Plac
 def _held_for_proposal(user: User, month: dt.date, changes: list[Change]) -> tuple[in_force.Held, NurseProfile]:
     """The month of the unit it falls under for the proposer, held for her and every nurse named. Which unit that is can only
     be read before the hold; read again under it, it holds still, since a transfer takes the catalogue's lock and an end date her
-    own. When something written while this waited moved her, the unit she is now in is held as well. Every write that waits on a
-    unit while holding another unit's rows takes the catalogue's lock first, which this holds, so that second hold waits in no
-    circle."""
+    own. When something written while this waited moved her, the unit she is now in is held as well, its lock taken after
+    another unit's roster. That is out of the usual order, but only for a proposal that met a move of its own proposer, and a
+    circle would need a write locking both units at that moment too; PostgreSQL would refuse one of them rather than wait."""
     nurses = {user.username} | {change.hospital_id for change in changes}
     proposer, placement = _placement_of(user, month)
     if placement is None:
