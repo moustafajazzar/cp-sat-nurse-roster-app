@@ -27,3 +27,10 @@ def approved_roster(unit: Unit, month: str = "2026-06") -> Roster:
     RosterVersion.objects.create(roster=roster, number=1, grid=sound["roster"], origin=VersionOrigin.SOLVE, solve=solve,
                                  created_by=unit.manager)
     return roster
+
+
+def locks_on(queries: list[dict], *tables: str) -> list[tuple[str, str]]:
+    """Each row lock these captured queries (`CaptureQueriesContext.captured_queries`) took on one of these tables, in the order
+    taken, as the table and its statement: how a test proves the order of the locks at the database itself."""
+    return [(table, query["sql"]) for query in queries if " FOR " in query["sql"]
+            for table in tables if f'FROM "{table}"' in query["sql"]]

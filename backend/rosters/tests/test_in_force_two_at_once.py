@@ -18,7 +18,7 @@ from rosters import in_force
 from rosters.approved import Change
 from rosters.drafts import in_current_codes
 from rosters.models import Roster
-from rosters.tests.conftest import approved_roster
+from rosters.tests.conftest import approved_roster, locks_on
 from rosters.tests.test_pins import change_shift, pin
 from rosters.tests.test_review import BADR_OFF, BADR_WORKS, carla, record_leave  # noqa: F401
 from rosters.tests.test_versions import change
@@ -70,11 +70,10 @@ def test_a_hold_locks_the_catalogue_the_nurses_and_their_users_the_unit_then_the
     with CaptureQueriesContext(connection) as queries:
         held_for(er, nurses)
 
-    locks = [query["sql"] for query in queries.captured_queries if " FOR " in query["sql"]]
-    tables = [next(table for table in ("hospital_hospitalsettings", "nurses_nurseprofile", "units_unit", "rosters_roster")
-                   if f'FROM "{table}"' in sql) for sql in locks]
-    assert tables == ["hospital_hospitalsettings", "nurses_nurseprofile", "units_unit", "rosters_roster"]
-    held = locks[1].split("FOR NO KEY UPDATE OF")[1]
+    tables = ("hospital_hospitalsettings", "nurses_nurseprofile", "units_unit", "rosters_roster")
+    locks = locks_on(queries.captured_queries, *tables)
+    assert [table for table, _ in locks] == list(tables)
+    held = locks[1][1].split("FOR NO KEY UPDATE OF")[1]
     assert '"nurses_nurseprofile"' in held and '"accounts_user"' in held
 
 
@@ -209,10 +208,8 @@ def test_a_leave_write_takes_no_catalogue_lock_and_holds_the_nurse_the_unit_then
         answer = leave_over_the_month_end(mona, er)
     assert [row["version"] for row in answer.json()["shifts_taken_off"]] == [2, 2]
 
-    locks = [query["sql"] for query in queries.captured_queries if " FOR " in query["sql"]]
-    assert not [sql for sql in locks if "hospital_hospitalsettings" in sql]
-    ordered = [(table, sql) for sql in locks for table in ("nurses_nurseprofile", "units_unit", "rosters_roster")
-               if f'FROM "{table}"' in sql]
+    assert not locks_on(queries.captured_queries, "hospital_hospitalsettings")
+    ordered = locks_on(queries.captured_queries, "nurses_nurseprofile", "units_unit", "rosters_roster")
     assert [table for table, _ in ordered] == ["nurses_nurseprofile", "units_unit", "rosters_roster", "rosters_roster"]
     assert "FOR KEY SHARE" in ordered[1][1]
     assert "2026-06-01" in ordered[2][1] and "2026-07-01" in ordered[3][1]

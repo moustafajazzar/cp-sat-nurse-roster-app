@@ -18,6 +18,7 @@ from requesting.tasks import open_and_close_request_windows
 from requesting.tests.conftest import ask, asked, decide, opened
 from requesting.tests.test_preferences import prefer, preferred
 from requesting.tests.test_requests import leave_for
+from rosters.tests.conftest import locks_on
 from rosters.tests.test_pins import solved
 from units.models import Unit
 from solves.tests.conftest import empty_queue  # noqa: F401
@@ -147,6 +148,4 @@ def test_a_decision_locks_the_requests_row_after_the_months_roster(mona, er, sol
         assert decide(mona, er, made["id"], "accept").status_code == 200
 
     tables = ("hospital_hospitalsettings", "nurses_nurseprofile", "units_unit", "rosters_roster", "requesting_request")
-    locked = [next(table for table in tables if f'FROM "{table}"' in query["sql"])
-              for query in queries.captured_queries if " FOR " in query["sql"]]
-    assert locked[:5] == list(tables)
+    assert [table for table, _ in locks_on(queries.captured_queries, *tables)][:5] == list(tables)
