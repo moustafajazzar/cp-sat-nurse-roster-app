@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import calendar
 import datetime as dt
+from collections.abc import Iterable
 from pathlib import Path
 from uuid import UUID
 
@@ -232,6 +233,17 @@ def rostered_in(unit: Unit, month: dt.date) -> QuerySet[NurseProfile]:
     return (placed_in(unit, month)
             .filter(start_date__lte=last_day_of(month))
             .filter(Q(end_date__isnull=True) | (Q(end_date__gte=month) & Q(end_date__gte=F("start_date")))))
+
+
+def planned_in(unit: Unit, month: dt.date, *, prefetch: Iterable = ()) -> tuple[list[NurseProfile], list[NurseProfile]]:
+    """Whom a solve of the unit's month plans for, by hospital ID, and whom it leaves out: every nurse with a day in the month,
+    less one whose account was deactivated while the profile runs on (`no_longer_serving`). One selection for a solve's request
+    and a re-plan's end, so the rows a re-plan makes are those its request was given. `prefetch` is what the caller reads of
+    each nurse."""
+    planned, left_out = [], []
+    for nurse in rostered_in(unit, month).select_related("user").prefetch_related(*prefetch).order_by("user__username"):
+        (left_out if no_longer_serving(nurse) else planned).append(nurse)
+    return planned, left_out
 
 
 def on_the_list_of(unit: Unit) -> QuerySet[NurseProfile]:

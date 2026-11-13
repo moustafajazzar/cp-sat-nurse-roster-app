@@ -177,10 +177,8 @@ def _hold(unit_of: Callable[[], UUID | None], month: dt.date, nurses: Collection
 
 
 def _the_months_nurses(unit: Unit, month: dt.date) -> frozenset[str]:
-    """Whom a solve of the month plans for, as `solves.input.assemble` picks them, so a re-plan's grid and the rows it makes agree:
-    every nurse with a day in the month, less one whose account was deactivated while the profile runs on."""
-    return frozenset(nurse.user.username for nurse in membership.rostered_in(unit, month).select_related("user")
-                     if not membership.no_longer_serving(nurse))
+    """Whom a solve of the month plans for, picked as its request picks them, so a re-plan's grid and the rows it makes agree."""
+    return frozenset(nurse.user.username for nurse in membership.planned_in(unit, month)[0])
 
 
 def hold_for_leave(unit_id, months: Iterable[dt.date], *, nurse: str) -> list[Held]:

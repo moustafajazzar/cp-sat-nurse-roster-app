@@ -92,13 +92,9 @@ def assemble(unit: Unit, month: dt.date, *, time_limit: int = 1, chain=None, fac
         "nurses": [],
         "solver": {"time_limit_seconds": time_limit, "reproducible": False},
     })
-    nurses = list(membership.rostered_in(unit, month).select_related("user")
-                  .prefetch_related(current_skills(), "placements", "preceptor_assignments__preceptor__user")
-                  .order_by("user__username"))
+    serving, assembled.left_out = membership.planned_in(
+        unit, month, prefetch=(current_skills(), "placements", "preceptor_assignments__preceptor__user"))
     preferred = _preferred(unit, month)
-    serving = []
-    for nurse in nurses:
-        (assembled.left_out if membership.no_longer_serving(nurse) else serving).append(nurse)
     carried_in, recorded_leave = chain.carry_ins(serving, month), leave_of(serving, month)
     in_the_month = []
     for nurse in serving:
