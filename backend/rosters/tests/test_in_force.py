@@ -17,6 +17,7 @@ from covers.tests.conftest import opened
 from notifications.models import Event, Notification
 from notifications.tests.test_events import as_user
 from nurses import membership
+from nurses.models import NurseProfile
 from rosters import in_force
 from rosters.approved import Change
 from rosters.drafts import in_current_codes
@@ -236,3 +237,54 @@ class TestRefusals:
         monkeypatch.setattr(membership, "today", lambda: dt.date(2026, 6, 20))
 
         assert changing(er, Change("Amal", day(25), "N")).number == 2
+
+
+JULY = dt.date(2026, 7, 1)
+
+
+def taking_off(unit, hospital_id: str, *days: dt.date) -> list:
+    """As a leave write does it: under the nurse's lock, holds the months of these days with leave's own hold and takes her
+    shifts on them off each one."""
+    with transaction.atomic():
+        list(NurseProfile.objects.select_for_update(no_key=True).filter(user__username=hospital_id))
+        made = []
+        for held in in_force.hold_for_leave(unit.pk, {day.replace(day=1) for day in days}, nurse=hospital_id):
+            cells = [Change(hospital_id, day, None) for day in days if day.replace(day=1) == held.month]
+            made.append(in_force.change(held, cells, origin=in_force.Origin.LEAVE, by=manager(), pins=0,
+                                        why=f"Leave recorded for {hospital_id} took their shift off."))
+        return made
+
+
+class TestLeave:
+    def test_leave_writes_no_roster_change_entry_and_its_version_is_an_edit_told_to_the_unit(self, er, june):
+        [made] = taking_off(er, "Badr", day(9))
+
+        assert made.number == 2 and versions(june)[-1].origin == "edit"
+        assert in_force_grid(er)["Badr"]["2026-06-09"] == ""
+        assert roster_changed_entries() == []
+        assert told_of_a_change() == {"Amal", "Badr", "Dana", "Emad"}
+
+    def test_leave_over_two_approved_months_makes_one_version_in_each(self, er, june):
+        """Dana works Night on 30 June and on 1 July."""
+        july = approved_roster(er, "2026-07")
+
+        made = taking_off(er, "Dana", dt.date(2026, 6, 30), dt.date(2026, 7, 1))
+
+        assert [(version.roster.month, version.number) for version in made] == [(JUNE, 2), (JULY, 2)]
+        assert versions(june)[-1].grid["Dana"]["2026-06-30"] == "" and versions(july)[-1].grid["Dana"]["2026-07-01"] == ""
+        assert [version.origin for version in made] == ["edit", "edit"] and roster_changed_entries() == []
+
+    def test_leaves_hold_takes_the_months_in_order_and_holds_no_roster_that_is_not_approved(self, er, june):
+        july = approved_roster(er, "2026-07")
+        Roster.objects.filter(pk=july.pk).update(state=RosterState.DRAFT)
+
+        with transaction.atomic():
+            held = in_force.hold_for_leave(er.pk, [JULY, JUNE], nurse="Dana")
+
+            assert [(each.month, each.roster) for each in held] == [(JUNE, june), (JULY, None)]
+            assert held[0].approved and held[0].unit == er and held[0].nurses == {"Dana"}
+            assert isinstance(held[1].refusal(), in_force.NotApproved)
+
+    def test_leave_in_no_month_holds_nothing(self, er):
+        with transaction.atomic():
+            assert in_force.hold_for_leave(er.pk, [], nurse="Dana") == []
