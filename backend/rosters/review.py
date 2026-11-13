@@ -14,7 +14,6 @@ from nurses.models import NurseProfile
 from rosters.drafts import FROZEN
 from rosters.editing import Checked
 from rosters.models import Decision, Roster, RosterState, RosterVersion, Submission, VersionOrigin
-from rosters.versions import make_version
 from solves.input import MONTH_DATES, Assembled, assemble, changes_since
 from solves.models import ACTIVE_STATES, Solve
 from units.models import Unit
@@ -147,11 +146,14 @@ def _decide(roster: Roster, decision: Decision, by: User, comment: str = "") -> 
 
 def approve(roster: Roster, by: User) -> RosterVersion:
     """The first approval makes version 1, with origin `solve` as section 4 has it, and the solve the grid came from. The grid is
-    the roster's as approved, hand edits and all."""
+    the roster's as approved, hand edits and all. It is no change to a roster in force (`rosters.in_force.change`): none was in
+    force to change, so no swap or cover waits on it, and its nurses are told it was approved, not changed."""
+    from rosters.in_force import _make_version  # That module holds a month through this one, so not at the top.
+
     _decide(roster, Decision.APPROVED, by)
     roster.state = RosterState.APPROVED
     roster.save(update_fields=["state"])
-    return make_version(roster, roster.grid, VersionOrigin.SOLVE, by, solve=roster.solve)
+    return _make_version(roster, roster.grid, VersionOrigin.SOLVE, by, solve=roster.solve)
 
 
 def reject(roster: Roster, by: User, comment: str) -> Submission:

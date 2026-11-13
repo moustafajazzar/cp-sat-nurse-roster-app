@@ -30,8 +30,8 @@ FROZEN = {
 def why_frozen(roster: Roster | None) -> str | None:
     """The one place a submitted or an approved roster refuses a solve's start and end and a restore. A submitted one refuses a
     save of pins too (`rosters.api._why_not_edit`); an approved one is edited by hand, each save a new version
-    (`rosters.versions`), and a re-plan passes this on purpose (`solves.replans`). A rename is not a change: the grid follows it whatever the state. Hold the
-    unit's lock, which a submit and a decision take, when this decides a write."""
+    (`rosters.in_force.change`), and a re-plan passes this on purpose (`solves.replans`). A rename is not a change: the grid
+    follows it whatever the state. Hold the unit's lock, which a submit and a decision take, when this decides a write."""
     return FROZEN.get(roster.state) if roster is not None else None
 
 

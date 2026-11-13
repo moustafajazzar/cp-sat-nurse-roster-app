@@ -36,7 +36,6 @@ from swaps.models import Answer, Swap, SwapCell, SwapParticipant, SwapState
 from units.models import Unit
 from units.scope import unit_in_scope
 
-MONTH_OVER = "This month is over, so its roster in force cannot change."
 # How many swaps a nurse may have withdrawn on one roster in the last day and still propose another there. A withdrawal frees its
 # cells, so without it one nurse's rounds would tell a colleague, or the manager, without end.
 WITHDRAWALS_A_DAY = 5
@@ -88,7 +87,7 @@ def propose(user: User, month: dt.date, changes: list[Change], note: str, reques
     (`swaps.judging`). A swap with no colleague in it goes straight to the manager."""
     held, proposer = _held_for_proposal(user, month, changes)
     if held.month_over:
-        raise HttpError(409, MONTH_OVER)
+        raise HttpError(409, in_force.MONTH_OVER)
     unit, roster = held.unit, held.roster
     if not held.approved:
         raise HttpError(409, no_approved_roster(unit, month))
@@ -212,7 +211,7 @@ def why_not_decide(swap: Swap) -> str | None:
             return "This swap still waits for its colleagues' answers."
         return f"{this_swap_is(swap.state)}, so it cannot be decided."
     if swap.roster.month < membership.this_month():
-        return MONTH_OVER
+        return in_force.MONTH_OVER
     return None
 
 

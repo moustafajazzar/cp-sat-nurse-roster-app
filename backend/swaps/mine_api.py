@@ -23,6 +23,7 @@ from nurses import membership, probation
 from nurses.api import MonthText
 from nurses.models import NurseProfile
 from rosters.grids import GridDay, by_name, full_names
+from rosters.in_force import MONTH_OVER
 from rosters.reading_api import MyRosterFilter, in_force
 from rosters.review import name_of
 from rosters.sheets import days_of
@@ -152,7 +153,7 @@ def composer(request: HttpRequest, filters: Query[MyRosterFilter]) -> SwapCompos
         answer.refusal = f"You are on no unit's roster for {found.month:%B %Y}."
         return answer
     if found.month < found.first:
-        answer.refusal = steps.MONTH_OVER
+        answer.refusal = MONTH_OVER
         return answer
     if found.version is None:
         answer.refusal = steps.no_approved_roster(found.unit, found.month)
@@ -160,7 +161,7 @@ def composer(request: HttpRequest, filters: Query[MyRosterFilter]) -> SwapCompos
     today = membership.today()
     days = [day for day in days_of(found.month) if day.date >= today]
     if not days:
-        answer.refusal = steps.MONTH_OVER
+        answer.refusal = MONTH_OVER
         return answer
     grid = found.roster.grid
     me = found.nurse.user.username

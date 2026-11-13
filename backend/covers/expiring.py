@@ -3,8 +3,9 @@ new version puts one more nurse on its shift-day, whatever made the version.
 
 A date is read by every page (`state_now`), so nothing waits on the worker; the stored state follows in the hourly job
 (`covers.tasks`) or the next write about the cover, whichever comes first (`expire_passed`), under each cover's row lock, so it
-happens once. A version is made in one place, `rosters.versions.make_version`, which calls `on_new_version` under the roster's row
-lock, after the swaps' hook. Neither is audited: both are nobody's act. The nurses offered one are told it ended, never why."""
+happens once. Every version after the first is a change to the roster in force, made in one place, `rosters.in_force.change`,
+which calls `on_new_version` under the roster's row lock, after the swaps' hook. Neither is audited: both are nobody's act. The
+nurses offered one are told it ended, never why."""
 from __future__ import annotations
 
 from collections import Counter

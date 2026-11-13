@@ -3,8 +3,9 @@ its cells, since what its colleagues accepted is then no longer what it would do
 
 A date is read by every page (`state_now`), so nothing waits on the worker; the stored state and who is told follow in the hourly
 job (`swaps.tasks`) or the next write about the swap, whichever comes first (`expire_passed`), under each swap's row lock, so it
-happens once. A version is made in one place, `rosters.versions.make_version`, which calls `on_new_version` under the roster's
-row lock. Nobody is told why a swap expired: a cell a version changed can be a colleague's leave."""
+happens once. Every version after the first is a change to the roster in force, made in one place, `rosters.in_force.change`,
+which calls `on_new_version` under the roster's row lock. Nobody is told why a swap expired: a cell a version changed can be a
+colleague's leave."""
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -54,8 +55,9 @@ def expire_passed(swaps: QuerySet[Swap] | None = None) -> list[Swap]:
 
 
 def on_new_version(roster: Roster, before: Grid, after: Grid) -> list[Swap]:
-    """Each waiting swap of this roster one of whose cells this version changed. Called by `make_version`, holding the roster's
-    row lock, which every swap's proposal and approval take before a swap's, so none is proposed on the grid this replaces."""
+    """Each waiting swap of this roster one of whose cells this version changed. Called by `rosters.in_force.change`, holding the
+    roster's row lock, which every swap's proposal and approval take before a swap's, so none is proposed on the grid this
+    replaces."""
     before, after = in_current_codes(before), in_current_codes(after)
     changed = {(nurse, day) for nurse in set(before) | set(after)
                for day in set(before.get(nurse, {})) | set(after.get(nurse, {}))
