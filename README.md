@@ -218,6 +218,12 @@ e2e/stack.sh down my-stack && e2e/stack.sh down my-journey
 ## Further reading
 
 - [`solver/how-to.md`](solver/how-to.md): building requests, reading results, carry-over, re-plans, month close.
-- [`solver/DESIGN.md`](solver/DESIGN.md): decision variables, every rule and its encoding, the data contract, benchmarks
-  and review history.
+- [`solver/DESIGN.md`](solver/DESIGN.md): decision variables, every rule and its encoding, the data contract and
+  performance.
 - [`CLAUDE.md`](CLAUDE.md): a condensed guide to the codebase's architecture and conventions.
+
+---
+
+## License
+
+[MIT](LICENSE) © 2026 Moustafa Jazzar
