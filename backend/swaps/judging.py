@@ -19,7 +19,7 @@ from accounts.models import Role
 from nurses import membership
 from nurses.models import NurseProfile
 from requesting.models import what_of
-from rosters.approved import ApprovedMonth, Change, newly_broken, with_pins
+from rosters.approved import ApprovedMonth, NewCell, newly_broken, with_pins
 from rosters.editing import Checked, scored
 from rosters.models import PinOrigin, Roster
 from rosters.pins import long_date
@@ -97,7 +97,7 @@ class SwapMonth(ApprovedMonth):
         self.in_other_swaps = set(waiting.values_list("nurse_id", "date"))
 
 
-def _cell_problem(month: SwapMonth, change: Change, index: int, proposer: NurseProfile | None) -> Problem | None:
+def _cell_problem(month: SwapMonth, change: NewCell, index: int, proposer: NurseProfile | None) -> Problem | None:
     """Why this one cell cannot be in the swap. `proposer` is None when the manager judges it again; the proposer's words are
     worked out either way. What My roster shows is checked first and said as it is (a date passed, a shift the unit does not
     work, a cell already holding its change), so that a reason resting on a colleague's facts, checked after and said only as
@@ -154,7 +154,7 @@ def _cell_problem(month: SwapMonth, change: Change, index: int, proposer: NurseP
     return None
 
 
-def _violation_problem(violation: dict, month: SwapMonth, changes: list[Change], proposer: NurseProfile | None,
+def _violation_problem(violation: dict, month: SwapMonth, changes: list[NewCell], proposer: NurseProfile | None,
                        preceptors: dict[str, str]) -> Problem:
     text = in_dates(violation["text"], month.month)
     day = dt.date.fromisoformat(violation["date"]) if violation["date"] else None
@@ -178,7 +178,7 @@ def _violation_problem(violation: dict, month: SwapMonth, changes: list[Change],
     return Problem(text, hidden)
 
 
-def judge(roster: Roster, changes: list[Change], proposer: NurseProfile | None, exclude: Swap | None = None) -> Judged:
+def judge(roster: Roster, changes: list[NewCell], proposer: NurseProfile | None, exclude: Swap | None = None) -> Judged:
     """Every reason the swap cannot work: each cell's, and when every cell can hold its change, what the grid would newly break
     on the month as it stands, with the solver's own code. A hard rule the roster in force already breaks is not the swap's,
     since an edit may save one, and a headcount already broken counts only when broken further."""

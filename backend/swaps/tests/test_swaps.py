@@ -362,9 +362,9 @@ class TestWhatTheProposerMayNotLearn:
     @staticmethod
     def the_manager_reads_why(mona, unit, words, shift):
         """The same change, judged for the manager, says it in full."""
-        from swaps.judging import Change, judge
-        judged = judge(Roster.objects.get(), [Change("Badr", dt.date(2026, 6, 9), None),
-                                             Change("Emad", dt.date(2026, 6, 9), shift)], None)
+        from swaps.judging import NewCell, judge
+        judged = judge(Roster.objects.get(), [NewCell("Badr", dt.date(2026, 6, 9), None),
+                                             NewCell("Emad", dt.date(2026, 6, 9), shift)], None)
         assert any(words in problem.manager for problem in judged.problems), [p.manager for p in judged.problems]
 
     @pytest.mark.parametrize("on_leave", [False, True], ids=["a day off", "leave"])

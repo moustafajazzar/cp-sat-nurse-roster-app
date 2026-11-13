@@ -1,11 +1,11 @@
 """Each step a swap takes: proposed, accepted or rejected by a colleague, withdrawn by its proposer, approved or rejected by the
 unit's manager. Each refusal, then the write, the audit entry and whoever is told; call each inside a transaction.
 
-A proposal and a manager's decision hold the unit's month as every change to the roster in force does
-(`rosters.in_force.hold`), then lock the swap's row, so neither passes a leave write or a version between its check and its write.
-An approval's version goes in force through `rosters.in_force.change`, which tells the unit's nurses and writes the roster-change
-entry. A colleague's answer and a withdrawal change nothing on the roster and take the swap's row lock alone, which nothing holds
-while waiting on another lock, so none of them waits in a circle.
+A proposal and a manager's decision hold the unit's month as every change to the roster in force does (`rosters.in_force.hold`,
+and for a proposal the unit its proposer is in), then lock the swap's row, so neither passes a leave write or a version between
+its check and its write. An approval's version goes in force through `rosters.in_force.change`, which tells the unit's nurses and
+writes the roster-change entry. A colleague's answer and a withdrawal change nothing on the roster and take the swap's row lock
+alone, which nothing holds while waiting on another lock, so none of them waits in a circle.
 
 The audit log says a swap moved and whose (the proposer's): never its cells, its dates, a note or a reason."""
 from __future__ import annotations
@@ -25,13 +25,13 @@ from hospital.models import Shift
 from notifications import sending
 from notifications.sending import SwapStep
 from nurses import membership, probation
-from nurses.models import NurseProfile, Placement
+from nurses.models import NurseProfile
 from rosters import in_force
 from rosters.drafts import current_code
 from rosters.models import PinOrigin, Roster
 from rosters.pins import long_date, pin_cell
 from swaps.expiring import expire_passed
-from swaps.judging import Change, judge, name_of, on_probation_said
+from swaps.judging import NewCell, judge, name_of, on_probation_said
 from swaps.models import Answer, Swap, SwapCell, SwapParticipant, SwapState
 from units.models import Unit
 from units.scope import unit_in_scope
@@ -57,35 +57,15 @@ def no_approved_roster(unit: Unit, month: dt.date) -> str:
     return f"The {unit.name} roster for {month:%B %Y} is not approved yet, so there is nothing to swap."
 
 
-def _placement_of(user: User, month: dt.date) -> tuple[NurseProfile | None, Placement | None]:
-    proposer = NurseProfile.objects.select_related("user").filter(user=user).first()
-    return proposer, membership.placement_in(proposer, month) if proposer else None
-
-
-def _held_for_proposal(user: User, month: dt.date, changes: list[Change]) -> tuple[in_force.Held, NurseProfile]:
-    """The month of the unit it falls under for the proposer, held for her and every nurse named. Which unit that is can only
-    be read before the hold; read again under it, it holds still, since a transfer takes the catalogue's lock and an end date her
-    own. When something written while this waited moved her, the unit she is now in is held as well, its lock taken after
-    another unit's roster. That is out of the usual order, but only for a proposal that met a move of its own proposer, and a
-    circle would need a write locking both units at that moment too; PostgreSQL would refuse one of them rather than wait."""
-    nurses = {user.username} | {change.hospital_id for change in changes}
-    proposer, placement = _placement_of(user, month)
-    if placement is None:
+def propose(user: User, month: dt.date, changes: list[NewCell], note: str, request: HttpRequest) -> Swap:
+    """On the approved roster of the unit this month falls under for the proposer, held for her and every nurse named
+    (`rosters.in_force.hold_where_placed`), so a transfer of hers that comes while this waits is the unit judged. Refused at
+    once, with every reason, if a cell cannot hold its change or the grid would newly break a hard rule, each reason in the
+    proposer's words (`swaps.judging`). A swap with no colleague in it goes straight to the manager."""
+    held = in_force.hold_where_placed(user.username, month, nurses={change.hospital_id for change in changes})
+    if held.unit is None:
         raise HttpError(409, f"You are on no unit's roster for {month:%B %Y}.")
-    held = in_force.hold(placement.unit_id, month, nurses=nurses)
-    proposer, placement = _placement_of(user, month)
-    if placement is None:
-        raise HttpError(409, f"You are on no unit's roster for {month:%B %Y}.")
-    if held.unit is None or held.unit.pk != placement.unit_id:
-        held = in_force.hold(placement.unit_id, month, nurses=nurses)
-    return held, proposer
-
-
-def propose(user: User, month: dt.date, changes: list[Change], note: str, request: HttpRequest) -> Swap:
-    """On the approved roster of the unit this month falls under for the proposer. Refused at once, with every reason, if a
-    cell cannot hold its change or the grid would newly break a hard rule, each reason in the proposer's words
-    (`swaps.judging`). A swap with no colleague in it goes straight to the manager."""
-    held, proposer = _held_for_proposal(user, month, changes)
+    proposer = NurseProfile.objects.select_related("user").get(user=user)
     if held.month_over:
         raise HttpError(409, in_force.MONTH_OVER)
     unit, roster = held.unit, held.roster
@@ -185,8 +165,8 @@ def withdraw(user: User, swap_id: UUID, request: HttpRequest) -> Swap:
     return swap
 
 
-def changes_of(swap: Swap) -> list[Change]:
-    return [Change(cell.nurse.user.username, cell.date, cell.after.code if cell.after else None)
+def changes_of(swap: Swap) -> list[NewCell]:
+    return [NewCell(cell.nurse.user.username, cell.date, cell.after.code if cell.after else None)
             for cell in swap.cells.select_related("nurse__user", "after")]
 
 
@@ -240,7 +220,7 @@ def approve(held: in_force.Held, swap: Swap, by: User, reason: str, request: Htt
     # The swap's own entry first, then the roster-change entry the change writes.
     record("swap.approved", actor=by, target=swap.proposer.user.username, request=request)
     try:
-        version = in_force.change(held, changes, origin=in_force.Origin.SWAP, by=by, why=reason_for_version, pins=len(cells),
+        version = in_force.change(held, changes, origin=in_force.Origin.SWAP, by=by, reason=reason_for_version, pins=len(cells),
                                   request=request)
     except in_force.Refused as refused:
         raise HttpError(409, str(refused)) from None

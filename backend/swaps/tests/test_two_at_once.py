@@ -4,7 +4,8 @@ forced, not hoped for."""
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from django.db import transaction
+from django.db import connection, transaction
+from django.test.utils import CaptureQueriesContext
 
 from accounts.models import Role
 from conftest import post
@@ -13,6 +14,7 @@ from notifications.tests.test_events import as_user
 from nurses.models import NurseProfile
 from nurses.tests.test_two_at_once import alongside
 from rosters.models import RosterVersion
+from rosters.tests.conftest import locks_on
 from rosters.tests.test_pins import icu, pin
 from rosters.tests.test_versions import change
 from solves.tests.conftest import empty_queue  # noqa: F401
@@ -92,6 +94,18 @@ def test_an_approval_waits_for_an_edit_of_one_of_its_cells_and_finds_it_expired(
     assert RosterVersion.objects.count() == 2
 
 
+def test_an_edit_waits_for_a_proposal_and_its_version_expires_it(in_force, mona, pool):
+    badr, other_tab = as_user("Badr"), as_user("mona")
+
+    with transaction.atomic():
+        assert propose(badr, *SOUND_SWAP).status_code == 201
+        edit = alongside(pool, lambda: change(other_tab, in_force, pin("Emad", 9, "D")))
+        assert not edit.done()
+
+    assert edit.result().status_code == 200
+    assert Swap.objects.get().state == SwapState.EXPIRED
+
+
 def test_a_proposal_waits_for_an_edit_of_one_of_its_cells_and_is_judged_on_the_new_version(in_force, mona, pool):
     badr = as_user("Badr")
 
@@ -107,7 +121,7 @@ def test_a_proposal_waits_for_an_edit_of_one_of_its_cells_and_is_judged_on_the_n
 
 def test_a_proposal_waits_for_a_transfer_of_its_proposer_and_is_judged_in_the_unit_she_is_now_in(in_force, carla, make_user,
                                                                                                     pool):
-    """Her unit can only be read before the proposal's locks; the transfer moves her while it waits for them."""
+    """The transfer moves her while the proposal waits for its locks, and her unit is read once hers is held."""
     other = icu(make_user("omar", Role.UNIT_MANAGER))
     badr = as_user("Badr")
 
@@ -122,3 +136,28 @@ def test_a_proposal_waits_for_a_transfer_of_its_proposer_and_is_judged_in_the_un
     assert answer.status_code == 409
     assert answer.json()["detail"] == "The ICU roster for June 2026 is not approved yet, so there is nothing to swap."
     assert not Swap.objects.exists()
+
+
+def test_a_proposal_that_meets_a_transfer_of_its_proposer_takes_each_lock_once_in_the_one_order(in_force, carla, make_user,
+                                                                                                    pool):
+    """The catalogue's, the nurses', then the unit she is in once hers is held, then its roster: never one unit's lock after
+    another's roster."""
+    other = icu(make_user("omar", Role.UNIT_MANAGER))
+    badr = as_user("Badr")
+
+    def proposing():
+        with CaptureQueriesContext(connection) as queries:
+            propose(badr, *SOUND_SWAP)
+        return queries.captured_queries  # Read here: `connection` is this thread's.
+
+    with transaction.atomic():
+        moved = post(carla, f"/api/nurses/{NurseProfile.objects.get(user__username='Badr').pk}/transfer",
+                     {"unit_id": str(other.pk), "from_month": "2026-06"})
+        assert moved.status_code == 200, moved.content
+        proposal = alongside(pool, proposing)
+        assert not proposal.done()
+
+    tables = ("hospital_hospitalsettings", "nurses_nurseprofile", "units_unit", "rosters_roster")
+    locks = locks_on(proposal.result(), *tables)
+    assert [table for table, _ in locks] == list(tables)
+    assert str(other.pk).replace("-", "") in locks[2][1]

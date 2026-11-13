@@ -24,7 +24,7 @@ from nurses import membership
 from nurses.models import NurseProfile
 from requesting.models import Request, RequestState, RequestStep, Step, what_of
 from rosters import in_force
-from rosters.approved import Change
+from rosters.approved import NewCell
 from rosters.drafts import FROZEN, current_code
 from rosters.models import PinEnded, PinnedCell, PinOrigin, Roster, RosterState, RosterVersion
 from rosters.pins import Judge, end, long_date, pin_cell
@@ -114,8 +114,8 @@ def _onto_roster(decision: Decision, shift: Shift | None, by: User, reason: str,
             roster.grid = grid
             roster.save(update_fields=["grid"])  # `updated_at` stays, as for a hand edit.
         return None
-    made = in_force.change(decision.held, [Change(hospital_id, decision.request.date, code or None)],
-                           origin=in_force.Origin.REQUEST, by=by, why=reason, pins=1, request=request)
+    made = in_force.change(decision.held, [NewCell(hospital_id, decision.request.date, code or None)],
+                           origin=in_force.Origin.REQUEST, by=by, reason=reason, pins=1, request=request)
     return None if made is in_force.UNCHANGED else made
 
 

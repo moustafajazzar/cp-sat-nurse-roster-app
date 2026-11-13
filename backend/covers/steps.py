@@ -6,9 +6,9 @@ and whoever is told; call each inside a transaction.
 An acceptance changes the roster in force, so it holds the unit's month as every such change does (`rosters.in_force.hold`)
 and then locks the cover's row, and no leave write or version passes between its check and its write; its version goes in force
 through `rosters.in_force.change`, which tells the unit's nurses and writes the roster-change entry. An offer, a decline and a
-withdrawal change nothing on the roster and take the cover's row lock alone, which nothing holds while waiting on another lock, so none of them waits in a
-circle. The rows they write refer to nurses and users, whose locks are all `FOR NO KEY UPDATE`, so the checks of those foreign
-keys at commit wait on nothing.
+withdrawal change nothing on the roster and take the cover's row lock alone, which nothing holds while waiting on another lock,
+so none of them waits in a circle. The rows they write refer to nurses and users, whose locks are all `FOR NO KEY UPDATE`, so the
+checks of those foreign keys at commit wait on nothing.
 
 The audit log says a cover moved and by whom: `cover.offered` and `cover.withdrawn` (the manager, the unit as target),
 `cover.accepted` and `cover.declined` (the nurse, her hospital ID as target), never its date, shift or note."""
@@ -27,7 +27,7 @@ from notifications import sending
 from notifications.sending import CoverStep
 from nurses.models import NurseProfile
 from rosters import in_force
-from rosters.approved import Change
+from rosters.approved import NewCell
 from rosters.models import PinOrigin
 from rosters.pins import long_date, pin_cell
 from rosters.review import name_of
@@ -179,8 +179,8 @@ def accept(user: User, cover_id: UUID, request: HttpRequest) -> Cover:
     # The cover's own entry first, then the roster-change entry the change writes.
     record("cover.accepted", actor=user, target=user.username, request=request)
     try:
-        version = in_force.change(held, [Change(user.username, cover.date, cover.shift.code)], origin=in_force.Origin.COVER,
-                                  by=user, why=f"Cover taken by {name_of(user)}: {which(cover)}.", pins=1, request=request)
+        version = in_force.change(held, [NewCell(user.username, cover.date, cover.shift.code)], origin=in_force.Origin.COVER,
+                                  by=user, reason=f"Cover taken by {name_of(user)}: {which(cover)}.", pins=1, request=request)
     except in_force.Refused as refused:
         raise HttpError(409, str(refused)) from None
     if version is in_force.UNCHANGED:

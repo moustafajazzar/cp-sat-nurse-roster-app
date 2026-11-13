@@ -14,7 +14,7 @@ from accounts.models import Role
 from nurses import membership
 from nurses.models import NurseProfile
 from rosters.models import Roster
-from swaps.judging import Change, judge
+from swaps.judging import NewCell, judge
 
 month = dt.date.fromisoformat(f"{os.environ['MONTH']}-01")
 roster = Roster.objects.get(unit__name=os.environ["UNIT"], month=month)
@@ -37,7 +37,7 @@ def a_sound_swap() -> dict:
             for colleague in ids:
                 if colleague == proposer or grid[colleague].get(day.isoformat(), ""):
                     continue
-                changes = [Change(proposer, day, None), Change(colleague, day, shift)]
+                changes = [NewCell(proposer, day, None), NewCell(colleague, day, shift)]
                 if not judge(roster, changes, NurseProfile.objects.get(user__username=proposer)).problems:
                     return {"proposer": proposer, "colleague": colleague, "date": day.isoformat(), "shift": shift}
     raise SystemExit(f"no sound two-cell swap on {roster.unit.name}'s {month:%Y-%m}")
