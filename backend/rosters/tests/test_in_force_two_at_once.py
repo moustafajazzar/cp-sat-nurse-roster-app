@@ -5,7 +5,8 @@ import datetime as dt
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-from django.db import transaction
+from django.db import connection, transaction
+from django.test.utils import CaptureQueriesContext
 
 from accounts.models import User
 from nurses.models import NurseProfile
@@ -55,6 +56,21 @@ def held_for(unit, nurses) -> None:
 
 def in_force_now(unit) -> Roster:
     return Roster.objects.get(unit=unit, month=JUNE)
+
+
+@pytest.mark.parametrize("nurses", [{"Amal"}, in_force.WHOLE_MONTH], ids=["named", "whole month"])
+def test_a_hold_locks_the_catalogue_the_nurses_and_their_users_the_unit_then_the_roster(er, june, nurses):
+    """The order every write that meets a change takes them in, so none waits on another the other way round. The nurses' and
+    their users' `FOR NO KEY UPDATE`, which a leave write takes too."""
+    with CaptureQueriesContext(connection) as queries:
+        held_for(er, nurses)
+
+    locks = [query["sql"] for query in queries.captured_queries if " FOR " in query["sql"]]
+    tables = [next(table for table in ("hospital_hospitalsettings", "nurses_nurseprofile", "units_unit", "rosters_roster")
+                   if f'FROM "{table}"' in sql) for sql in locks]
+    assert tables == ["hospital_hospitalsettings", "nurses_nurseprofile", "units_unit", "rosters_roster"]
+    held = locks[1].split("FOR NO KEY UPDATE OF")[1]
+    assert '"nurses_nurseprofile"' in held and '"accounts_user"' in held
 
 
 def test_of_two_changes_at_once_the_second_waits_and_is_the_next_version_built_on_the_first(er, june, pool):
@@ -116,6 +132,7 @@ def test_a_whole_month_hold_waits_on_any_nurse_of_the_month_and_a_named_one_only
     with transaction.atomic():
         list(NurseProfile.objects.select_for_update(no_key=True).filter(user__username="Badr"))
         named = alongside(pool, lambda: held_for(er, {"Amal"}))
+        assert named.done(), "a named hold waited on a nurse it did not name"
         named.result()
         whole = alongside(pool, lambda: held_for(er, in_force.WHOLE_MONTH))
         assert not whole.done()
