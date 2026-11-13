@@ -470,20 +470,17 @@ def save_version(request: HttpRequest, unit_id: UUID, body: VersionBody) -> Rost
     with transaction.atomic():
         held = _locked_for_edits(request, unit_id, month, edits)
         roster, unit = held.roster, held.roster.unit
-        try:
-            # Asked before judging, so a roster that cannot change is refused before any edit's own refusal.
-            refused = held.refusal()
-            if refused:
-                raise refused
-            editing = _judged(roster, edits)
-            pins = editing.save_pins(edits, request.user)
-            made = in_force.change(held, _cells(editing, edits), origin=in_force.Origin.EDIT, by=request.user, why=reason,
-                                   pins=pins, request=request)
-        except in_force.NotApproved:
-            # A manager working on a draft or a submitted roster is told what she can do with it instead.
-            raise HttpError(409, _why_not_edit(roster, request.user) or NOT_APPROVED) from None
-        except in_force.Refused as refused:
-            raise HttpError(409, str(refused)) from None
+        # Asked before judging, so a roster that cannot change is refused before any edit's own refusal; `in_force.change`
+        # then refuses nothing. A manager working on a draft or a submitted roster is told what she can do with it instead.
+        refused = held.refusal()
+        if isinstance(refused, in_force.NotApproved):
+            raise HttpError(409, _why_not_edit(roster, request.user) or NOT_APPROVED)
+        if refused:
+            raise HttpError(409, str(refused))
+        editing = _judged(roster, edits)
+        pins = editing.save_pins(edits, request.user)
+        made = in_force.change(held, _cells(editing, edits), origin=in_force.Origin.EDIT, by=request.user, why=reason, pins=pins,
+                               request=request)
         if made is in_force.UNCHANGED:
             # Raised inside the transaction, so the pins saved above go with it.
             raise HttpError(409, NOTHING_CHANGED)

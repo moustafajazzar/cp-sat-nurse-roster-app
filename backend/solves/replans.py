@@ -76,22 +76,16 @@ def finish(solve: Solve, result: dict | None, state: SolveState) -> SolveOutcome
     stopped = state == SolveState.CANCELLED
     if not has_a_roster_to_keep(result):
         return _ended(solve, None, SolveOutcome.NO_ROSTER)
-    # A month over is answered before anything outdated, so a month both over and moved on reads as over, as it always has;
-    # and a roster that is not approved is one that moved on.
+    # A month over is answered before anything outdated, so a month both over and moved on reads as over; and a roster that is
+    # not approved is one that moved on. What `in_force.change` would refuse is answered here, so it refuses nothing.
     if held.month_over:
         return _ended(solve, ReplanOutcome.MONTH_OVER, SolveOutcome.REPLAN_MONTH_OVER)
     roster = held.roster
     latest = roster.versions.first() if held.approved else None
     if latest is None or latest.number != solve.replan_of or changes_since(solve.input, solve.unit, solve.month):
         return _ended(solve, ReplanOutcome.OUTDATED, SolveOutcome.REPLAN_OUTDATED)
-    try:
-        made = in_force.change(held, _cells_changed(roster.grid, in_current_codes(result["roster"])),
-                               origin=in_force.Origin.REPLAN, by=solve.requested_by, why=reason_for(solve), pins=0,
-                               solve=solve)
-    except in_force.MonthOver:
-        return _ended(solve, ReplanOutcome.MONTH_OVER, SolveOutcome.REPLAN_MONTH_OVER)
-    except in_force.Refused:
-        return _ended(solve, ReplanOutcome.OUTDATED, SolveOutcome.REPLAN_OUTDATED)
+    made = in_force.change(held, _cells_changed(roster.grid, in_current_codes(result["roster"])), origin=in_force.Origin.REPLAN,
+                           by=solve.requested_by, why=reason_for(solve), pins=0, solve=solve)
     if made is in_force.UNCHANGED:
         return _ended(solve, ReplanOutcome.UNCHANGED, SolveOutcome.REPLAN_UNCHANGED)
     # The grid is this solve's now: clearing a pin gives a cell back to it, and the page's details are its.
