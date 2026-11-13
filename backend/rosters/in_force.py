@@ -267,11 +267,17 @@ def change(held: Held, cells: Iterable[Change], *, origin: Origin, by: User, rea
     return version
 
 
+def first_version(roster: Roster, by: User) -> RosterVersion:
+    """Version 1, which the first approval of the roster makes: its grid as approved, hand edits and all, with origin `solve`
+    and the solve the grid came from. Nothing that follows a change follows it, as no roster was in force to change."""
+    return _make_version(roster, roster.grid, VersionOrigin.SOLVE, by, solve=roster.solve)
+
+
 def _make_version(roster: Roster, grid: Grid, origin: VersionOrigin, by: User, reason: str = "",
                   solve: Solve | None = None) -> RosterVersion:
     """The next number, with `grid` in today's codes, which becomes `Roster.grid` too, and the month's carry-over projected
     again. Hold the roster's row lock, so that two versions at once each get their own number in the order they commit. Only
-    `change` and approval, which makes version 1, write a version: any other writer would skip what follows a change."""
+    `change` and `first_version` write a version: any other writer would skip what follows a change."""
     from closes.tasks import project  # The month close reads rosters, so not at the top.
 
     latest = roster.versions.first()
