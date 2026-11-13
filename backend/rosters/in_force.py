@@ -3,7 +3,8 @@
 `hold` takes a unit's month under the locks every change takes, in one fixed order: the catalogue's (which a solve's start and
 end, a restore and a shift's rename hold), then the named nurses' (which a leave write holds, and which come before a unit's in a
 transfer), then the unit's and the month's roster's (as a submit and an approval take them). It never refuses: the month's roster
-may be a draft, approved or absent, and the origin decides what that means for it.
+may be a draft, approved or absent, and the origin decides what that means for it. `hold_where_placed` is the same hold for an
+origin that knows a nurse rather than a unit, and reads her unit under the locks.
 
 Between the two steps the origin does what only it knows: checks the user's scope on the held unit, locks its own row (a swap, a
 cover, a request), judges whether its change may happen, and makes, replaces or ends its own pins. Pins stay with the origins.
@@ -20,8 +21,9 @@ from __future__ import annotations
 import calendar
 import datetime as dt
 import enum
-from collections.abc import Collection, Iterable
+from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
+from uuid import UUID
 
 from django.http import HttpRequest
 
@@ -128,22 +130,43 @@ class Held:
         return None
 
 
-def hold(unit_id, month: dt.date, *, nurses: Collection[str] | WholeMonth) -> Held:
+def hold(unit_id: UUID, month: dt.date, *, nurses: Collection[str] | WholeMonth) -> Held:
     """Locks the month for a change of these nurses' cells (hospital IDs), or of any nurse's with `WHOLE_MONTH`. Call it inside
     the transaction that changes, before reading anything the change depends on. The nurses' locks are `FOR NO KEY UPDATE`, which
     serialise as `FOR UPDATE` would but let a colleague's leave commit its notifications, whose foreign keys to users are
     checked then, while this waits on the roster it holds. The unit's and the roster's own rows only, so no user row is locked
     here: a manager's deactivation locks hers before her unit's."""
+    return _hold(lambda: unit_id, month, nurses)
+
+
+def hold_where_placed(nurse: str, month: dt.date, *, nurses: Collection[str]) -> Held:
+    """`hold` of the unit this nurse (hospital ID) is placed in for the month, holding her with `nurses`: for an origin whose
+    unit is hers, such as a swap's proposal. Her placement is read between the nurses' locks and the unit's, where a transfer,
+    which holds the catalogue's lock, and an end date, which holds hers, can no longer move it; so the unit held is the one she
+    is in, and each lock is taken once, in the one order. `unit` is None when the month falls under no placement of hers."""
+    def placed() -> UUID | None:
+        profile = NurseProfile.objects.filter(user__username=nurse).first()
+        placement = membership.placement_in(profile, month) if profile else None
+        return placement.unit_id if placement else None
+
+    return _hold(placed, month, {nurse, *nurses})
+
+
+def _hold(unit_of: Callable[[], UUID | None], month: dt.date, nurses: Collection[str] | WholeMonth) -> Held:
+    """The one order of the locks. `unit_of` names the unit, asked once the nurses named are locked; a whole month's nurses are
+    those of the unit, so it is asked first there."""
     HospitalSettings.load(for_update=True)
     whole = isinstance(nurses, WholeMonth)
     if whole:
+        unit_id = unit_of()
         unit = Unit.objects.filter(pk=unit_id).first()
         roster = Roster.objects.filter(unit_id=unit_id, month=month).first()
         locked = review.lock_the_months_nurses(unit, month, roster) if unit else []
     else:
         locked = list(NurseProfile.objects.select_for_update(of=("self", "user"), no_key=True).select_related("user")
                       .filter(user__username__in=list(nurses)).order_by("pk"))
-    unit = Unit.objects.select_for_update(of=("self",)).filter(pk=unit_id).first()
+        unit_id = unit_of()
+    unit = Unit.objects.select_for_update(of=("self",)).filter(pk=unit_id).first() if unit_id is not None else None
     roster = None
     if unit is not None:
         roster = (Roster.objects.select_for_update(of=("self",)).select_related("solve", "unit")
