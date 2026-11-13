@@ -50,7 +50,8 @@ jobs:
       POSTGRES_PASSWORD: dev-only-postgres-password
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      # This action publishes exact versions only, with no moving major tag to follow.
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           enable-cache: true
       # --locked fails on a lock file that no longer matches the projects, rather than quietly resolving again.
@@ -78,7 +79,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      # This action publishes exact versions only, with no moving major tag to follow.
+      - uses: astral-sh/setup-uv@v10.3.3
         with:
           enable-cache: true
       - run: uv sync --locked
