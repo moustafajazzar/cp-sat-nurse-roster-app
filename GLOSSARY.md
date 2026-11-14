@@ -39,3 +39,13 @@ _Avoid_: Manual change, override
 **Pin**:
 A cell fixed to a shift or to off, which a solve or re-plan must keep. A pin belongs to whoever caused it (the manager, a request, a swap or a cover) and exists whether or not the month has a roster yet.
 _Avoid_: Lock, fixed cell
+
+### What a roster breaks
+
+**Violation**:
+A hard rule a roster breaks, at a nurse, a date or a shift-day. It is the same thing whoever reads it; a swap's problem and a cover's lack are that origin's wording of one.
+_Avoid_: Finding, lack, problem, error
+
+**Shift-day**:
+One shift on one date in a unit: what a rule about a shift's staffing on a day is about, such as its headcount or its team leader.
+_Avoid_: Slot, shift instance
