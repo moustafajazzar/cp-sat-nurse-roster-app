@@ -1,0 +1,450 @@
+<title>Roster Design Language</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Public+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* PROTOTYPE, throw away. Question: what design language (palette, type, density, elevation, status colours) should the
+   nurse-roster app use, in light and dark, beside user-chosen shift colours, without blocking RTL later?
+   Three variants on one page, switched by the floating bar (or ← →). Same content in each; what differs is the treatment:
+   A "Ward"   calm clinical, medium density, bordered cards, shift colour as a full cell fill (today's approach)
+   B "Ledger" flat and dense, hairline rules, no cards, shift colour as a stripe, monospace codes and numerals
+   C "Panels" spacious, elevated panels, larger type, shift colour as a tinted pill
+   Layout concept: app shell (sidebar + top bar) around a roster excerpt, a table, a form, and a 320 px phone frame. */
+
+/* ---------- tokens: bare :root = variant A light ---------- */
+:root {
+  --bg: #f6f8f9; --surface: #ffffff; --surface-2: #eef2f4; --fg: #14202a; --muted: #5b6b78; --line: #dbe2e7; --line-strong: #c3ced6;
+  --accent: #0e7c86; --accent-fg: #ffffff; --accent-soft: #dff1f2;
+  --danger: #c2322b; --danger-soft: #fbe7e5; --warn: #a15c00; --warn-soft: #fdf0dc; --ok: #1d7a45; --ok-soft: #e1f3e8; --info: #2457a6; --info-soft: #e5edf9;
+  --leave: #e9e4f2; --leave-fg: #4c3d6b;
+  --font: "Geist", ui-sans-serif, system-ui, sans-serif; --mono: "Geist", ui-monospace, monospace; --heading: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --radius: 8px; --radius-sm: 5px; --row: 32px; --cell: 34px; --gap: 16px; --pad: 16px; --fs: 14px; --fs-h1: 20px; --fs-h2: 15px;
+  --shadow: none; --card-border: 1px solid var(--line);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1519; --surface: #151d22; --surface-2: #1c262c; --fg: #e3eaee; --muted: #93a3ae; --line: #26323a; --line-strong: #34434d;
+  --accent: #3fb6bf; --accent-fg: #06191b; --accent-soft: #123338;
+  --danger: #f0776f; --danger-soft: #3a1a18; --warn: #f2b25c; --warn-soft: #3a2a12; --ok: #63c98d; --ok-soft: #143222; --info: #84aef0; --info-soft: #172741;
+  --leave: #2a2438; --leave-fg: #c9bde3; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f1519; --surface: #151d22; --surface-2: #1c262c; --fg: #e3eaee; --muted: #93a3ae; --line: #26323a; --line-strong: #34434d;
+  --accent: #3fb6bf; --accent-fg: #06191b; --accent-soft: #123338;
+  --danger: #f0776f; --danger-soft: #3a1a18; --warn: #f2b25c; --warn-soft: #3a2a12; --ok: #63c98d; --ok-soft: #143222; --info: #84aef0; --info-soft: #172741;
+  --leave: #2a2438; --leave-fg: #c9bde3; color-scheme: dark }
+
+/* variant B "Ledger" */
+:root[data-v="b"] {
+  --bg: #fbfbfa; --surface: #fbfbfa; --surface-2: #f1f2f1; --fg: #1b1d1f; --muted: #686d72; --line: #e3e4e3; --line-strong: #cfd1d0;
+  --accent: #1f4fd1; --accent-fg: #ffffff; --accent-soft: #e8eefc;
+  --danger: #c4261d; --danger-soft: #fde9e7; --warn: #9a5b00; --warn-soft: #fdf1df; --ok: #19734a; --ok-soft: #e3f3ea; --info: #1f4fd1; --info-soft: #e8eefc;
+  --leave: #efedf4; --leave-fg: #4f4766;
+  --font: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, monospace; --heading: "IBM Plex Sans", ui-sans-serif, sans-serif;
+  --radius: 2px; --radius-sm: 2px; --row: 26px; --cell: 28px; --gap: 0px; --pad: 12px; --fs: 13px; --fs-h1: 16px; --fs-h2: 13px;
+  --shadow: none; --card-border: 0;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"])[data-v="b"] {
+  --bg: #111213; --surface: #111213; --surface-2: #1a1c1e; --fg: #e4e5e6; --muted: #979ca1; --line: #26292c; --line-strong: #363a3e;
+  --accent: #7d9ff5; --accent-fg: #0b1430; --accent-soft: #18233f;
+  --danger: #f2756c; --danger-soft: #3b1714; --warn: #efb257; --warn-soft: #382811; --ok: #5fc78f; --ok-soft: #12301f; --info: #7d9ff5; --info-soft: #18233f;
+  --leave: #26222f; --leave-fg: #c4bbdb } }
+:root[data-theme="dark"][data-v="b"] {
+  --bg: #111213; --surface: #111213; --surface-2: #1a1c1e; --fg: #e4e5e6; --muted: #979ca1; --line: #26292c; --line-strong: #363a3e;
+  --accent: #7d9ff5; --accent-fg: #0b1430; --accent-soft: #18233f;
+  --danger: #f2756c; --danger-soft: #3b1714; --warn: #efb257; --warn-soft: #382811; --ok: #5fc78f; --ok-soft: #12301f; --info: #7d9ff5; --info-soft: #18233f;
+  --leave: #26222f; --leave-fg: #c4bbdb }
+
+/* variant C "Panels" */
+:root[data-v="c"] {
+  --bg: #eef1f5; --surface: #ffffff; --surface-2: #f4f6f9; --fg: #18202e; --muted: #5c6678; --line: #e1e6ee; --line-strong: #cdd5e1;
+  --accent: #2f55d4; --accent-fg: #ffffff; --accent-soft: #e6ecfb;
+  --danger: #c8302a; --danger-soft: #fdecea; --warn: #a35a00; --warn-soft: #fff1dd; --ok: #1f7a4b; --ok-soft: #e3f4ea; --info: #2f55d4; --info-soft: #e6ecfb;
+  --leave: #ece8f6; --leave-fg: #4d3f72;
+  --font: "Public Sans", ui-sans-serif, system-ui, sans-serif; --mono: "Public Sans", ui-monospace, monospace; --heading: "Public Sans", ui-sans-serif, sans-serif;
+  --radius: 14px; --radius-sm: 8px; --row: 40px; --cell: 40px; --gap: 20px; --pad: 20px; --fs: 15px; --fs-h1: 24px; --fs-h2: 17px;
+  --shadow: 0 1px 2px rgb(20 30 50 / 6%), 0 4px 16px rgb(20 30 50 / 6%); --card-border: 1px solid transparent;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"])[data-v="c"] {
+  --bg: #0d1117; --surface: #161c26; --surface-2: #1d2531; --fg: #e5e9f0; --muted: #98a2b3; --line: #253041; --line-strong: #334156;
+  --accent: #8aa6ff; --accent-fg: #0b1430; --accent-soft: #1a2546;
+  --danger: #ff8077; --danger-soft: #3d1a18; --warn: #f5b45e; --warn-soft: #3a2a13; --ok: #66cc94; --ok-soft: #143222; --info: #8aa6ff; --info-soft: #1a2546;
+  --leave: #272238; --leave-fg: #cbbfe6; --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 6px 20px rgb(0 0 0 / 30%) } }
+:root[data-theme="dark"][data-v="c"] {
+  --bg: #0d1117; --surface: #161c26; --surface-2: #1d2531; --fg: #e5e9f0; --muted: #98a2b3; --line: #253041; --line-strong: #334156;
+  --accent: #8aa6ff; --accent-fg: #0b1430; --accent-soft: #1a2546;
+  --danger: #ff8077; --danger-soft: #3d1a18; --warn: #f5b45e; --warn-soft: #3a2a13; --ok: #66cc94; --ok-soft: #143222; --info: #8aa6ff; --info-soft: #1a2546;
+  --leave: #272238; --leave-fg: #cbbfe6; --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 6px 20px rgb(0 0 0 / 30%) }
+
+/* ---------- base ---------- */
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--fg); font-family: var(--font); font-size: var(--fs); line-height: 1.45; margin: 0;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 16px 96px }
+button, input, select { font: inherit; color: inherit }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums }
+h1, h2, h3 { font-family: var(--heading); margin: 0; text-wrap: balance }
+.intro { max-width: 1440px; margin-inline: auto; margin-bottom: 14px; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; color: var(--muted); font-size: 13px }
+.intro strong { color: var(--fg); font-size: 15px }
+
+/* ---------- app frame ---------- */
+.app { max-width: 1440px; margin-inline: auto; display: grid; grid-template-columns: auto minmax(0, 1fr); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--bg); min-height: 720px }
+.side { background: var(--surface); border-inline-end: 1px solid var(--line); padding: 12px 10px; display: flex; flex-direction: column; gap: 14px; width: 232px }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 600; padding: 4px 6px 8px }
+.brand-mark { width: 24px; height: 24px; border-radius: var(--radius-sm); background: var(--accent); color: var(--accent-fg); display: grid; place-items: center; font-size: 12px; font-weight: 700 }
+.group { display: flex; flex-direction: column; gap: 1px }
+.group-name { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); padding: 4px 8px; font-weight: 500 }
+.nav { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: var(--radius-sm); color: var(--muted); text-decoration: none; min-height: 32px }
+.nav:hover { background: var(--surface-2); color: var(--fg) }
+.nav[aria-current="page"] { background: var(--accent-soft); color: var(--fg); font-weight: 500 }
+.nav .count { margin-inline-start: auto; font-size: 11px; background: var(--surface-2); border-radius: 99px; padding: 0 7px; color: var(--muted) }
+.ico { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round }
+.main { min-width: 0; display: flex; flex-direction: column }
+.top { display: flex; align-items: center; gap: 10px; padding: 10px var(--pad); border-bottom: 1px solid var(--line); background: var(--surface); flex-wrap: wrap }
+.search { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 5px 10px; color: var(--muted); background: var(--bg); min-width: 220px; cursor: pointer }
+.search kbd { margin-inline-start: auto; font-family: var(--mono); font-size: 11px; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px }
+.ctx { display: flex; align-items: center; gap: 6px; font-weight: 500 }
+.ctx .unit { padding: 3px 9px; border-radius: 99px; background: var(--surface-2); font-size: 13px }
+.iconbtn { width: 32px; height: 32px; display: grid; place-items: center; border-radius: var(--radius-sm); border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; position: relative }
+.iconbtn:hover { background: var(--surface-2); color: var(--fg) }
+.dot { position: absolute; inset-inline-end: 6px; top: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--danger); border: 2px solid var(--surface) }
+.avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-weight: 600; font-size: 12px }
+.spacer { flex: 1 }
+.content { padding: var(--pad); display: flex; flex-direction: column; gap: var(--gap) }
+.pagehead { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px }
+.pagehead h1 { font-size: var(--fs-h1); font-weight: 600 }
+.sub { color: var(--muted); font-size: .92em }
+
+/* buttons, badges */
+.btn { display: inline-flex; align-items: center; gap: 6px; border-radius: var(--radius-sm); padding: 6px 12px; border: 1px solid var(--line-strong); background: var(--surface); cursor: pointer; font-weight: 500; min-height: 32px }
+.btn:hover { background: var(--surface-2) }
+.btn.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent) }
+.btn.primary:hover { filter: brightness(1.06) }
+.badge { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; padding: 1px 8px; border-radius: 99px; white-space: nowrap }
+.badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor }
+.b-draft { background: var(--warn-soft); color: var(--warn) } .b-ok { background: var(--ok-soft); color: var(--ok) }
+.b-bad { background: var(--danger-soft); color: var(--danger) } .b-info { background: var(--info-soft); color: var(--info) } .b-muted { background: var(--surface-2); color: var(--muted) }
+
+/* cards */
+.card { background: var(--surface); border: var(--card-border); border-radius: var(--radius); box-shadow: var(--shadow); min-width: 0 }
+.card-head { display: flex; align-items: center; gap: 10px; padding: 12px var(--pad); border-bottom: 1px solid var(--line); flex-wrap: wrap }
+.card-head h2 { font-size: var(--fs-h2); font-weight: 600 }
+.card-body { padding: var(--pad) }
+.split { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: var(--gap) }
+.two { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto; gap: var(--gap); align-items: start }
+
+/* roster grid */
+.gridwrap { overflow-x: auto; min-width: 0 }
+table.grid { border-collapse: separate; border-spacing: 0; font-size: 12px; width: max-content }
+.grid th, .grid td { height: var(--row); padding: 0; text-align: center }
+.grid thead th { font-weight: 500; color: var(--muted); padding: 4px 0; min-width: var(--cell); border-bottom: 1px solid var(--line); background: var(--surface); position: sticky; top: 0 }
+.grid thead th .wd { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .04em }
+.grid thead th.we { color: var(--fg) }
+.grid th.name { text-align: start; padding-inline: 10px 14px; position: sticky; inset-inline-start: 0; background: var(--surface); z-index: 1; font-weight: 500; white-space: nowrap; min-width: 168px; border-bottom: 1px solid var(--line) }
+.grid th.name small { display: block; color: var(--muted); font-weight: 400; font-size: 11px }
+.grid td { border-bottom: 1px solid var(--line); border-inline-start: 1px solid var(--line); min-width: var(--cell) }
+.grid td button { width: 100%; height: 100%; border: 0; background: transparent; cursor: pointer; position: relative; font-weight: 600; font-size: 12px; display: grid; place-items: center; padding: 0 }
+.grid tr.cover th, .grid tr.cover td { background: var(--surface-2); color: var(--muted); font-weight: 500 }
+.grid tr.cover td.short { color: var(--danger); font-weight: 700 }
+.grid td.leave button { background: var(--leave); color: var(--leave-fg) }
+.grid td.off button { color: var(--muted); font-weight: 400 }
+.pin { position: absolute; inset-inline-end: 3px; top: 3px; width: 6px; height: 6px; border-radius: 50%; background: currentColor }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--muted); font-size: 12px; align-items: center }
+.legend .sw { display: inline-block; width: 18px; height: 14px; border-radius: 3px; vertical-align: -2px; margin-inline-end: 5px; position: relative }
+
+/* A: full fill (styles set from script via CSSOM, as the app's CSP requires) */
+[data-v="a"] .grid td.violation button { box-shadow: inset 0 0 0 2px var(--danger) }
+[data-v="a"] .grid td.pending button { outline: 2px dashed currentColor; outline-offset: -5px }
+/* B: stripe */
+[data-v="b"] .grid td.shift button { justify-items: start; padding-inline-start: 7px; font-family: var(--mono); font-weight: 500 }
+[data-v="b"] .grid td.shift button::before { content: ""; position: absolute; inset-block: 0; inset-inline-start: 0; width: 3px; background: var(--shift) }
+[data-v="b"] .grid td.violation button { background: var(--danger-soft); color: var(--danger) }
+[data-v="b"] .grid td.violation button::after { content: "!"; position: absolute; inset-inline-end: 4px; font-weight: 700 }
+[data-v="b"] .grid td.pending button { background-image: repeating-linear-gradient(135deg, transparent 0 4px, var(--line-strong) 4px 5px) }
+[data-v="b"] .grid th, [data-v="b"] .grid td { border-color: var(--line) }
+/* C: tinted pill */
+[data-v="c"] .grid td { border-inline-start-color: transparent }
+[data-v="c"] .grid td.shift button span.pill { padding: 3px 0; width: calc(100% - 8px); border-radius: 99px; background: color-mix(in oklab, var(--shift) 16%, var(--surface)); color: color-mix(in oklab, var(--shift) 75%, var(--fg)); box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--shift) 35%, transparent) }
+[data-v="c"] .grid td.leave button span.pill { padding: 3px 0; width: calc(100% - 8px); border-radius: 99px; background: var(--leave) }
+[data-v="c"] .grid td.leave button { background: transparent }
+[data-v="c"] .grid td.violation button { background: var(--danger-soft) }
+[data-v="c"] .grid td.pending button span.pill { outline: 2px dashed var(--accent); outline-offset: 1px }
+
+/* issues list */
+.issue { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; padding: 10px var(--pad); border-bottom: 1px solid var(--line) }
+.issue:last-child { border-bottom: 0 }
+.issue .sev { grid-row: span 2; width: 8px; height: 8px; border-radius: 50%; margin-top: 6px }
+.issue .t { font-weight: 500 } .issue .d { color: var(--muted); font-size: .9em }
+.sev.hard { background: var(--danger) } .sev.soft { background: var(--warn) }
+
+/* table */
+table.list { width: 100%; border-collapse: collapse; font-size: .95em }
+.list th { text-align: start; font-weight: 500; color: var(--muted); font-size: 12px; padding: 8px var(--pad); border-bottom: 1px solid var(--line) }
+.list td { padding: 0 var(--pad); height: calc(var(--row) + 8px); border-bottom: 1px solid var(--line) }
+.list tr:last-child td { border-bottom: 0 }
+.list .act { text-align: end; white-space: nowrap }
+.link { color: var(--accent); background: none; border: 0; cursor: pointer; padding: 4px; font-weight: 500 }
+
+/* form */
+.form { display: grid; gap: 14px }
+.field { display: grid; gap: 5px }
+.field label { font-weight: 500; font-size: .93em }
+.field .hint { color: var(--muted); font-size: 12px }
+.field input[type="number"], .field select { border: 1px solid var(--line-strong); border-radius: var(--radius-sm); padding: 6px 10px; background: var(--surface); width: 100%; max-width: 140px; min-height: 34px }
+.field.err input { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-soft) }
+.field .msg { color: var(--danger); font-size: 12px; font-weight: 500 }
+.weight { display: flex; align-items: center; gap: 10px } .weight input { flex: 1; accent-color: var(--accent) }
+.switch { display: flex; align-items: center; gap: 10px }
+.switch input { accent-color: var(--accent); width: 18px; height: 18px }
+.formfoot { display: flex; gap: 8px; justify-content: flex-end; padding-top: 4px }
+
+/* phone */
+.phone { width: 320px; border: 1px solid var(--line-strong); border-radius: 28px; overflow: hidden; background: var(--bg); display: flex; flex-direction: column; height: 600px; flex: none }
+.ph-top { display: flex; align-items: center; gap: 8px; padding: 12px 14px; background: var(--surface); border-bottom: 1px solid var(--line) }
+.ph-top h3 { font-size: 16px; font-weight: 600 }
+.ph-body { flex: 1; overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px }
+.ph-sum { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px }
+.ph-sum div { background: var(--surface); border: var(--card-border); box-shadow: var(--shadow); border-radius: var(--radius-sm); padding: 8px; display: grid }
+.ph-sum b { font-size: 18px } .ph-sum span { font-size: 11px; color: var(--muted) }
+.ph-day { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; align-items: center; gap: 10px; background: var(--surface); border: var(--card-border); box-shadow: var(--shadow); border-radius: var(--radius-sm); padding: 8px 10px; min-height: 52px }
+.ph-day .dt { display: grid; text-align: center; line-height: 1.1 } .ph-day .dt b { font-size: 17px } .ph-day .dt span { font-size: 11px; color: var(--muted); text-transform: uppercase }
+.ph-day .what b { display: block; font-weight: 600 } .ph-day .what span { color: var(--muted); font-size: 12px }
+.chip { font-weight: 700; font-size: 12px; min-width: 30px; height: 26px; display: grid; place-items: center; border-radius: var(--radius-sm); padding-inline: 6px }
+.tabs { display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1px solid var(--line); background: var(--surface); padding-bottom: 6px }
+.tab { display: grid; justify-items: center; gap: 2px; padding: 7px 0 3px; color: var(--muted); font-size: 10.5px; border: 0; background: none; min-height: 48px; cursor: pointer; white-space: nowrap }
+.tab[aria-current="page"] { color: var(--accent); font-weight: 600 }
+.tab .ico { width: 20px; height: 20px }
+/* B: chip as stripe; C: chip as tint */
+[data-v="b"] .chip { border-radius: 0; background: transparent !important; color: var(--fg) !important; border-inline-start: 3px solid var(--shift); font-family: var(--mono); font-weight: 500 }
+[data-v="c"] .chip { border-radius: 99px; background: color-mix(in oklab, var(--shift) 16%, var(--surface)) !important; color: color-mix(in oklab, var(--shift) 75%, var(--fg)) !important }
+[data-v="c"] .phone { border-radius: 32px }
+
+/* B structure: no cards, rules between regions, rail sidebar */
+[data-v="b"] .app { border-radius: 0 }
+[data-v="b"] .side { width: 56px; padding: 10px 8px; align-items: center }
+[data-v="b"] .side .group-name, [data-v="b"] .side .label, [data-v="b"] .side .count, [data-v="b"] .brand-name { display: none }
+[data-v="b"] .nav { justify-content: center; padding: 8px; width: 40px }
+[data-v="b"] .nav[aria-current="page"] { background: transparent; color: var(--accent); box-shadow: inset 2px 0 0 var(--accent) }
+[data-v="b"] .group { border-top: 1px solid var(--line); padding-top: 8px }
+[data-v="b"] .content { padding: 0 }
+[data-v="b"] .pagehead { padding: 10px var(--pad); border-bottom: 1px solid var(--line) }
+[data-v="b"] .card { border-bottom: 1px solid var(--line) }
+[data-v="b"] .card-head { padding: 7px var(--pad); background: var(--surface-2) }
+[data-v="b"] .card-head h2 { text-transform: uppercase; letter-spacing: .05em; font-size: 11px; color: var(--muted) }
+[data-v="b"] .split { gap: 0 } [data-v="b"] .split > .card + .card { border-inline-start: 1px solid var(--line) }
+[data-v="b"] .two { gap: 0 } [data-v="b"] .two > * + * { border-inline-start: 1px solid var(--line) }
+[data-v="b"] .two .phonecell { padding: 12px }
+[data-v="b"] .badge { border-radius: 2px; padding: 0 6px; font-family: var(--mono); font-size: 11px }
+[data-v="b"] .badge::before { display: none }
+[data-v="b"] .btn { min-height: 28px; padding: 3px 10px }
+[data-v="b"] .search { min-width: 260px }
+[data-v="b"] .ph-sum div, [data-v="b"] .ph-day { border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent }
+[data-v="b"] .ph-body { gap: 0; padding: 0 } [data-v="b"] .ph-sum { padding: 10px; gap: 0 } [data-v="b"] .ph-sum div + div { border-inline-start: 1px solid var(--line) }
+[data-v="b"] .phone { border-radius: 18px }
+/* C structure: spacious, panels float on the background */
+[data-v="c"] .app { border: 0; background: transparent; gap: 0 }
+[data-v="c"] .side { background: transparent; border: 0; width: 248px; padding: 16px 12px }
+[data-v="c"] .nav { min-height: 38px; padding: 8px 12px; border-radius: 10px }
+[data-v="c"] .nav[aria-current="page"] { background: var(--surface); box-shadow: var(--shadow) }
+[data-v="c"] .top { background: transparent; border: 0; padding: 16px var(--pad) 4px }
+[data-v="c"] .search { background: var(--surface); border-color: transparent; box-shadow: var(--shadow); border-radius: 99px; padding: 8px 14px; min-width: 280px }
+[data-v="c"] .card-head { border-bottom: 0; padding-bottom: 4px }
+[data-v="c"] .list th { border-bottom-color: transparent }
+[data-v="c"] .btn { border-radius: 99px; padding: 8px 16px; min-height: 38px }
+
+/* RTL check: logical properties carry it; only the grid's own arrows would need mirroring */
+
+/* ---------- switcher (not part of the design) ---------- */
+.switcher { position: fixed; inset-block-end: calc(16px + env(safe-area-inset-bottom, 0px)); inset-inline-start: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 4px;
+  background: #111; color: #fff; border-radius: 99px; padding: 5px; box-shadow: 0 6px 24px rgb(0 0 0 / 35%); z-index: 50; font: 500 13px/1 system-ui, sans-serif; max-width: calc(100vw - 24px); flex-wrap: wrap; justify-content: center }
+[dir="rtl"] .switcher { transform: translateX(50%) }
+.switcher button { background: transparent; color: #fff; border: 0; border-radius: 99px; padding: 8px 12px; cursor: pointer; font: inherit }
+.switcher button:hover { background: #333 }
+.switcher .lbl { padding: 0 10px; min-width: 150px; text-align: center }
+.switcher .sep { width: 1px; height: 20px; background: #444 }
+.switcher [aria-pressed="true"] { background: #fff; color: #111 }
+
+@media (max-width: 1100px) { .split, .two { grid-template-columns: minmax(0, 1fr) } .phonecell { justify-self: center } }
+@media (max-width: 760px) { .side { display: none } .app { grid-template-columns: minmax(0, 1fr) } .search { min-width: 0; flex: 1 } }
+@media (prefers-reduced-motion: no-preference) { .nav, .btn, .iconbtn { transition: background-color .12s } }
+</style>
+
+<div class="intro"><strong id="vname">A · Ward</strong><span id="vdesc"></span><span>Unit Manager, ICU, December 2026 (example data). Use the bar or ← → to switch.</span></div>
+<div class="app" id="app"></div>
+
+<div class="switcher" role="toolbar" aria-label="Prototype controls">
+  <button type="button" id="prev" aria-label="Previous variant">←</button>
+  <span class="lbl" id="lbl">A · Ward</span>
+  <button type="button" id="next" aria-label="Next variant">→</button>
+  <span class="sep"></span>
+  <button type="button" data-theme-btn="light">Light</button>
+  <button type="button" data-theme-btn="dark">Dark</button>
+  <span class="sep"></span>
+  <button type="button" id="rtl" aria-pressed="false">RTL</button>
+</div>
+
+<script>
+const VARIANTS = {
+  a: { name: "Ward", desc: "Calm clinical: cool neutrals, teal accent, bordered cards, medium density, shift colour fills the cell." },
+  b: { name: "Ledger", desc: "Flat and dense: hairline rules, no cards, icon rail, monospace codes, shift colour as a stripe." },
+  c: { name: "Panels", desc: "Spacious: floating panels, larger type, rounded controls, shift colour as a tinted pill." },
+}
+const KEYS = Object.keys(VARIANTS)
+const SHIFTS = { D: ["Day", "#0284c7", "07–19"], N: ["Night", "#4338ca", "19–07"], A: ["Morning", "#16a34a", "07–15"], B: ["Evening", "#d97706", "15–23"], C: ["Late night", "#7c3aed", "23–07"] }
+const ICONS = {
+  home: "M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z", grid: "M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18", calendar: "M4 5h16v16H4zM4 10h16M9 3v4M15 3v4",
+  inbox: "M3 13h5l2 3h4l2-3h5M5 5h14l2 8v6H3v-6z", swap: "M7 7h13l-4-4M17 17H4l4 4", cover: "M12 3 4 7v6c0 4 3.5 7 8 8 4.5-1 8-4 8-8V7z",
+  history: "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2", rules: "M4 6h16M4 12h10M4 18h7", people: "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21c0-4 3-6 7-6s7 2 7 6M17 11a3 3 0 1 0 0-6M22 21c0-3-2-5-5-5.5",
+  tag: "M3 12V3h9l9 9-9 9zM7.5 7.5h.01", leave: "M5 12h14M12 5v14", book: "M4 4h11a3 3 0 0 1 3 3v13H7a3 3 0 0 1-3-3zM18 17H7", search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-5-5",
+  bell: "M6 16V11a6 6 0 1 1 12 0v5l2 2H4zM10 21h4", chev_l: "M15 6l-6 6 6 6", chev_r: "M9 6l6 6-6 6", play: "M7 4l13 8-13 8z", month: "M4 5h16v16H4zM4 10h16M8 14h2M12 14h2M16 14h2M8 17h2",
+}
+const ico = (name) => `<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[name]}"/></svg>`
+
+const NAV = [
+  [null, [["home", "Home"]]],
+  ["My work", [["calendar", "My roster"], ["month", "My month"]]],
+  ["Rostering", [["grid", "Roster", true], ["inbox", "Requests", false, 4], ["swap", "Swaps", false, 2], ["cover", "Covers"], ["history", "Solve history"]]],
+  ["Unit setup", [["rules", "Unit rules"], ["people", "Nurses"], ["tag", "Rostering attributes"], ["leave", "Leave"]]],
+  ["Reference", [["book", "Shifts"], ["book", "Leave types"], ["book", "Skills"], ["book", "Holidays and Ramadan"]]],
+]
+
+// Example month excerpt: 12 nurses × 14 days from Tue 1 Dec 2026.
+const NURSES = ["Amal Haddad", "Omar Saleh", "Lina Farouk", "Yousef Nasser", "Mona Khalil", "Sara Odeh", "Rami Aziz", "Hala Mansour", "Tariq Fahad", "Dana Rashed", "Noor Qasim", "Ziad Hamdan"]
+const BANDS = ["Band 6", "Band 7 · Charge", "Band 5", "Band 6", "Band 5", "Band 5 · Probation", "Band 6", "Band 5", "Band 6", "Band 5", "Band 6", "Band 5"]
+const PATTERN = ["DDNN..L", "NN..DDD", "..DDNN.", "D..NNN.", "BBA..AA", "AABB..C", ".CCC..B", "DD..DDN", "N..DD..", "LLLLLLL", ".AABB..", "B..AABB"]
+const DAYS = 14, WD = ["Tue", "Wed", "Thu", "Fri", "Sat", "Sun", "Mon"]
+const cellAt = (r, d) => { const ch = PATTERN[r][(d + r) % 7]; return ch === "." ? "" : ch }
+const VIOL = new Set(["3:4", "7:9"]), PEND = new Set(["1:6", "4:2"]), PINS = new Set(["0:0", "2:5", "8:11"])
+
+function rosterTable() {
+  let h = `<table class="grid" role="grid" aria-label="Roster excerpt, 1 to 14 December"><thead><tr><th class="name" scope="col">Nurse</th>`
+  for (let d = 0; d < DAYS; d++) { const wd = WD[d % 7]; h += `<th scope="col" class="${wd === "Fri" || wd === "Sat" ? "we" : ""}"><span class="wd">${wd}</span><span class="num">${d + 1}</span></th>` }
+  h += `</tr></thead><tbody>`
+  NURSES.forEach((n, r) => {
+    h += `<tr><th class="name" scope="row">${n}<small>${BANDS[r]}</small></th>`
+    for (let d = 0; d < DAYS; d++) {
+      const c = cellAt(r, d), k = `${r}:${d}`
+      const cls = [c === "L" ? "leave" : c ? "shift" : "off", VIOL.has(k) && "violation", PEND.has(k) && "pending"].filter(Boolean).join(" ")
+      const label = `${n}, ${d + 1} December: ${c === "L" ? "Leave" : c ? SHIFTS[c][0] : "Off"}${PINS.has(k) ? ", pinned" : ""}${VIOL.has(k) ? ", breaks a rule" : ""}${PEND.has(k) ? ", edit waiting" : ""}`
+      h += `<td class="${cls}" data-shift="${c}"><button type="button" tabindex="${r === 0 && d === 0 ? 0 : -1}" aria-label="${label}"><span class="pill">${c}</span>${PINS.has(k) ? '<span class="pin" aria-hidden="true"></span>' : ""}</button></td>`
+    }
+    h += `</tr>`
+  })
+  h += `<tr class="cover"><th class="name" scope="row">Day cover<small>needs 4</small></th>`
+  for (let d = 0; d < DAYS; d++) { let n = 0; NURSES.forEach((_, r) => { if ("DA".includes(cellAt(r, d)) && cellAt(r, d)) n++ }); h += `<td class="num ${n < 4 ? "short" : ""}">${n}</td>` }
+  h += `</tr><tr class="cover"><th class="name" scope="row">Night cover<small>needs 3</small></th>`
+  for (let d = 0; d < DAYS; d++) { let n = 0; NURSES.forEach((_, r) => { if ("NC".includes(cellAt(r, d)) && cellAt(r, d)) n++ }); h += `<td class="num ${n < 3 ? "short" : ""}">${n}</td>` }
+  return h + `</tr></tbody></table>`
+}
+
+function render(v) {
+  const nav = NAV.map(([g, items]) => `<div class="group">${g ? `<div class="group-name">${g}</div>` : ""}${items.map(([i, l, cur, count]) =>
+    `<a class="nav" href="#${v}" ${cur ? 'aria-current="page"' : ""} title="${l}">${ico(i)}<span class="label">${l}</span>${count ? `<span class="count num">${count}</span>` : ""}</a>`).join("")}</div>`).join("")
+  const legend = Object.entries(SHIFTS).map(([c, [name]]) => `<span><span class="sw" data-shift="${c}"></span>${c} ${name}</span>`).join("") +
+    `<span><span class="sw" style="background:var(--leave)"></span>Leave</span><span>● pinned</span><span>dashed: edit waiting</span><span style="color:var(--danger)">breaks a rule</span>`
+  return `
+  <aside class="side" aria-label="Main">
+    <div class="brand"><span class="brand-mark">NR</span><span class="brand-name">Nurse roster</span></div>${nav}
+  </aside>
+  <div class="main">
+    <header class="top">
+      <button type="button" class="search">${ico("search")}<span class="label">Search pages and actions</span><kbd>Ctrl K</kbd></button>
+      <span class="spacer"></span>
+      <span class="ctx"><span class="unit">ICU</span></span>
+      <span class="ctx"><button class="iconbtn" aria-label="Previous month">${ico("chev_l")}</button><span>December 2026</span><button class="iconbtn" aria-label="Next month">${ico("chev_r")}</button></span>
+      <button class="iconbtn" aria-label="Notifications, 3 new">${ico("bell")}<span class="dot"></span></button>
+      <span class="avatar" aria-label="Omar Saleh, Unit Manager">OS</span>
+    </header>
+    <div class="content">
+      <div class="pagehead">
+        <h1>Roster</h1><span class="badge b-draft">Draft</span><span class="sub">Version 3 · solved 14 Nov, 09:12 · cost <span class="num">1,284</span></span>
+        <span class="spacer"></span><button class="btn">Compare versions</button><button class="btn primary">${ico("play")}Solve again</button>
+      </div>
+      <div class="split">
+        <section class="card"><div class="card-head"><h2>1–14 December</h2><span class="sub">12 of 18 nurses shown</span><span class="spacer"></span><div class="legend">${legend}</div></div>
+          <div class="gridwrap">${rosterTable()}</div></section>
+        <section class="card"><div class="card-head"><h2>Breaks a rule</h2><span class="badge b-bad">2 hard</span><span class="badge b-draft">1 soft</span></div>
+          <div class="issue"><span class="sev hard"></span><span class="t">Night cover short on Sat 5 Dec</span><span class="d">2 of 3 nurses on Night</span></div>
+          <div class="issue"><span class="sev hard"></span><span class="t">Yousef Nasser: Night then Day</span><span class="d">Fri 4 → Sat 5 Dec, needs 11 h rest</span></div>
+          <div class="issue"><span class="sev soft"></span><span class="t">Hala Mansour: 4 nights in a row</span><span class="d">Preference is at most 3 · weight 40</span></div>
+        </section>
+      </div>
+      <div class="two">
+        <section class="card"><div class="card-head"><h2>Requests</h2><span class="badge b-info">Window open until 20 Nov</span></div>
+          <div class="gridwrap"><table class="list"><thead><tr><th>Nurse</th><th>Asked for</th><th>When</th><th>Status</th><th class="act"><span class="sr">Actions</span></th></tr></thead><tbody>
+            <tr><td>Mona Khalil</td><td>Off, 24–26 Dec</td><td class="sub">2 hours ago</td><td><span class="badge b-draft">Waiting</span></td><td class="act"><button class="link">Review</button></td></tr>
+            <tr><td>Rami Aziz</td><td>No nights, week 52</td><td class="sub">Yesterday</td><td><span class="badge b-ok">Granted</span></td><td class="act"><button class="link">Open</button></td></tr>
+            <tr><td>Sara Odeh</td><td>Day shift, 31 Dec</td><td class="sub">12 Nov</td><td><span class="badge b-bad">Refused</span></td><td class="act"><button class="link">Open</button></td></tr>
+            <tr><td>Noor Qasim</td><td>Off, 1 Jan</td><td class="sub">11 Nov</td><td><span class="badge b-muted">Withdrawn</span></td><td class="act"><button class="link">Open</button></td></tr>
+          </tbody></table></div></section>
+        <section class="card"><div class="card-head"><h2>Unit rules</h2><span class="sub">Night shifts</span></div>
+          <form class="card-body form" onsubmit="event.preventDefault()">
+            <div class="field"><label for="f-nights-${v}">Most nights in a row</label><input id="f-nights-${v}" type="number" value="4" class="num"><span class="hint">The hospital allows up to 4.</span></div>
+            <div class="field err"><label for="f-rest-${v}">Rest after a night, in hours</label><input id="f-rest-${v}" type="number" value="8" class="num" aria-invalid="true" aria-describedby="f-rest-msg-${v}"><span class="msg" id="f-rest-msg-${v}">At least 11 hours: the hospital's rule.</span></div>
+            <div class="field"><label for="f-w-${v}">How much fair nights matter</label><div class="weight"><input id="f-w-${v}" type="range" min="0" max="100" value="40"><span class="num">40</span></div></div>
+            <label class="switch"><input type="checkbox" checked id="f-ram-${v}">Shorter shifts in Ramadan</label>
+            <div class="formfoot"><button type="button" class="btn">Cancel</button><button class="btn primary">Save rules</button></div>
+          </form></section>
+        <div class="phonecell"><div class="phone" aria-label="Staff Nurse on a phone, 320 px wide">
+          <div class="ph-top"><h3>My month</h3><span class="spacer"></span><button class="iconbtn" aria-label="Notifications">${ico("bell")}<span class="dot"></span></button></div>
+          <div class="ph-body">
+            <div class="ph-sum"><div><b class="num">132</b><span>hours of 144</span></div><div><b class="num">11</b><span>shifts</span></div><div><b class="num">3</b><span>leave days</span></div></div>
+            ${[[1, "Tue", "D"], [2, "Wed", "D"], [3, "Thu", "N"], [4, "Fri", "N"], [5, "Sat", ""], [7, "Mon", "L"]].map(([d, w, c]) =>
+              `<div class="ph-day"><span class="dt"><b class="num">${d}</b><span>${w}</span></span><span class="what"><b>${c === "L" ? "Annual leave" : c ? SHIFTS[c][0] : "Off"}</b><span>${c && c !== "L" ? SHIFTS[c][2] + (d === 1 ? " · pinned" : "") : d === 5 ? "Rest after nights" : ""}</span></span>${c && c !== "L" ? `<span class="chip" data-shift="${c}">${c}</span>` : ""}</div>`).join("")}
+          </div>
+          <nav class="tabs" aria-label="Main">${[["home", "Home"], ["month", "My month", true], ["calendar", "My roster"], ["swap", "Swaps"], ["cover", "Covers"]].map(([i, l, cur]) =>
+            `<button class="tab" ${cur ? 'aria-current="page"' : ""}>${ico(i)}${l}</button>`).join("")}</nav>
+        </div></div>
+      </div>
+    </div>
+  </div>`
+}
+
+// Shift colours go through the CSSOM (style.setProperty), as the app's CSP (style-src 'self') allows; never a style attribute in markup.
+function readableOn(hex) {
+  const [r, g, b] = [1, 3, 5].map((i) => { const c = parseInt(hex.slice(i, i + 2), 16) / 255; return c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4 })
+  const L = .2126 * r + .7152 * g + .0722 * b
+  return 1.05 / (L + .05) >= (L + .05) / .05 ? "#ffffff" : "#000000"
+}
+function paint(v) {
+  document.querySelectorAll("[data-shift]").forEach((el) => {
+    const c = el.dataset.shift; if (!c || c === "L") return
+    const colour = SHIFTS[c][1]
+    el.style.setProperty("--shift", colour)
+    const target = el.matches("td") ? el.querySelector("button") : el
+    if (v === "a" || el.classList.contains("sw") || el.classList.contains("chip")) { target.style.backgroundColor = colour; target.style.color = readableOn(colour) }
+    if (v !== "a" && el.matches("td")) { target.style.backgroundColor = ""; target.style.color = "" }
+  })
+}
+
+let current = "a"
+function show(v) {
+  current = KEYS.includes(v) ? v : "a"
+  document.documentElement.dataset.v = current
+  document.getElementById("app").innerHTML = render(current)
+  paint(current)
+  const label = `${current.toUpperCase()} · ${VARIANTS[current].name}`
+  document.getElementById("lbl").textContent = label
+  document.getElementById("vname").textContent = label
+  document.getElementById("vdesc").textContent = VARIANTS[current].desc
+  if (location.hash.slice(1) !== current) history.replaceState(null, "", "#" + current)
+}
+const step = (d) => show(KEYS[(KEYS.indexOf(current) + d + KEYS.length) % KEYS.length])
+document.getElementById("prev").onclick = () => step(-1)
+document.getElementById("next").onclick = () => step(1)
+addEventListener("keydown", (e) => {
+  if (e.target.closest("input, textarea, select, [contenteditable], table.grid")) return
+  if (e.key === "ArrowLeft") step(-1); if (e.key === "ArrowRight") step(1)
+})
+addEventListener("hashchange", () => show(location.hash.slice(1)))
+function setTheme(t) {
+  document.documentElement.dataset.theme = t
+  document.querySelectorAll("[data-theme-btn]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.themeBtn === t)))
+}
+document.querySelectorAll("[data-theme-btn]").forEach((b) => b.onclick = () => setTheme(b.dataset.themeBtn))
+setTheme(matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+document.getElementById("rtl").onclick = (e) => {
+  const on = document.documentElement.dir !== "rtl"
+  document.documentElement.dir = on ? "rtl" : "ltr"
+  e.currentTarget.setAttribute("aria-pressed", String(on))
+}
+show(location.hash.slice(1))
+</script>
