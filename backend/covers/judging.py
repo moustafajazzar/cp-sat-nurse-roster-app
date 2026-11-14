@@ -152,8 +152,8 @@ class CoverMonth(ApprovedMonth):
 
     def with_her(self, hospital_id: str) -> tuple[Checked, list[dict]]:
         """Her grid's check, and the hard rules it newly breaks."""
-        change = [NewCell(hospital_id, self.day, self.shift.code)]
-        after = scored(with_pins(self.input, self, change), self.grid_after(change))
+        new_cells = [NewCell(hospital_id, self.day, self.shift.code)]
+        after = scored(with_pins(self.input, self, new_cells), self.grid_after(new_cells))
         return after, (newly_broken(self.before, after) if after.answer else [])
 
     def full(self) -> str | None:

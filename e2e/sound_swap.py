@@ -37,8 +37,8 @@ def a_sound_swap() -> dict:
             for colleague in ids:
                 if colleague == proposer or grid[colleague].get(day.isoformat(), ""):
                     continue
-                changes = [NewCell(proposer, day, None), NewCell(colleague, day, shift)]
-                if not judge(roster, changes, NurseProfile.objects.get(user__username=proposer)).problems:
+                new_cells = [NewCell(proposer, day, None), NewCell(colleague, day, shift)]
+                if not judge(roster, new_cells, NurseProfile.objects.get(user__username=proposer)).problems:
                     return {"proposer": proposer, "colleague": colleague, "date": day.isoformat(), "shift": shift}
     raise SystemExit(f"no sound two-cell swap on {roster.unit.name}'s {month:%Y-%m}")
 

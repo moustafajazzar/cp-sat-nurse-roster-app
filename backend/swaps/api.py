@@ -107,7 +107,7 @@ def _decision(request: HttpRequest, unit_id: UUID, swap_id: UUID) -> SwapDecisio
     if state not in WAITING:
         answer.approve_refusal = f"{steps.this_swap_is(state)}, so it cannot be decided."
         return answer
-    judged = judge(roster, steps.changes_of(swap), None, exclude=swap)
+    judged = judge(roster, steps.new_cells_of(swap), None, exclude=swap)
     answer.problems = list(dict.fromkeys(problem.manager for problem in judged.problems))
     if judged.after is not None:
         answer.check = _grid_check(judged.after, roster.month)

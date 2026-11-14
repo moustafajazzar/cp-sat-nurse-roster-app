@@ -194,7 +194,7 @@ class ProposeSwapBody(StrictSchema):
     note: str = Field("", max_length=500, description="Optional. Everyone in the swap and the unit's manager read it.")
 
 
-def _changes(body: ProposeSwapBody) -> list[NewCell]:
+def _new_cells(body: ProposeSwapBody) -> list[NewCell]:
     """Whatever the roster holds, these could never be meant."""
     wrong, seen = [], set()
     for index, cell in enumerate(body.cells):
@@ -217,9 +217,9 @@ def propose_swap(request: HttpRequest, body: ProposeSwapBody) -> Status:
     """On the approved roster of the unit the month falls under for you, cells of today or later, at least one of them yours.
     Refused with 422 and every reason, each on its cell when it is about one: a reason that rests on a colleague says only that
     the swap cannot work for them on that date. Each colleague whose cells change is told; with none, the manager is."""
-    changes = _changes(body)
+    new_cells = _new_cells(body)
     with transaction.atomic():
-        swap = steps.propose(request.user, dt.date.fromisoformat(f"{body.month}-01"), changes, body.note.strip(), request)
+        swap = steps.propose(request.user, dt.date.fromisoformat(f"{body.month}-01"), new_cells, body.note.strip(), request)
     return Status(201, _answer_row(request, swap.pk))
 
 

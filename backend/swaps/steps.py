@@ -57,12 +57,13 @@ def no_approved_roster(unit: Unit, month: dt.date) -> str:
     return f"The {unit.name} roster for {month:%B %Y} is not approved yet, so there is nothing to swap."
 
 
-def propose(user: User, month: dt.date, changes: list[NewCell], note: str, request: HttpRequest) -> Swap:
+def propose(user: User, month: dt.date, new_cells: list[NewCell], note: str, request: HttpRequest) -> Swap:
     """On the approved roster of the unit this month falls under for the proposer, held for her and every nurse named
-    (`rosters.in_force.hold_where_placed`), so a transfer of hers that comes while this waits is the unit judged. Refused at
-    once, with every reason, if a cell cannot hold its change or the grid would newly break a hard rule, each reason in the
-    proposer's words (`swaps.judging`). A swap with no colleague in it goes straight to the manager."""
-    held = in_force.hold_where_placed(user.username, month, nurses={change.hospital_id for change in changes})
+    (`rosters.in_force.hold_where_placed`), so after a transfer of hers that commits while this waits, the swap is judged in the
+    unit she moved to. Refused at once, with every reason, if a cell cannot hold its change or the grid would newly break a hard
+    rule, each reason in the proposer's words (`swaps.judging`). A swap with no colleague in it goes straight to the
+    manager."""
+    held = in_force.hold_where_placed(user.username, month, nurses={new_cell.hospital_id for new_cell in new_cells})
     if held.unit is None:
         raise HttpError(409, f"You are on no unit's roster for {month:%B %Y}.")
     proposer = NurseProfile.objects.select_related("user").get(user=user)
@@ -77,21 +78,21 @@ def propose(user: User, month: dt.date, changes: list[NewCell], note: str, reque
     expire_passed(Swap.objects.filter(roster=roster))
     if probation.on_probation_in(proposer, month):
         raise HttpError(409, on_probation_said(month))
-    if not any(change.hospital_id == user.username for change in changes):
+    if not any(new_cell.hospital_id == user.username for new_cell in new_cells):
         refuse((("cells",), NO_OWN_CELL))
-    said = judge(roster, changes, proposer).for_proposer()
+    said = judge(roster, new_cells, proposer).for_proposer()
     if said:
         refuse(*[(("cells",) if index is None else ("cells", index), words) for index, words in said])
     swap = Swap.objects.create(unit=unit, roster=roster, proposed_on=roster.versions.first(), proposer=proposer, note=note)
     nurses = {nurse.user.username: nurse for nurse in NurseProfile.objects.select_related("user").filter(
-        user__username__in=[change.hospital_id for change in changes])}
-    codes = {current_code(change.shift) for change in changes if change.shift}
-    codes |= {roster.grid[change.hospital_id][change.day] for change in changes} - {""}
+        user__username__in=[new_cell.hospital_id for new_cell in new_cells])}
+    codes = {current_code(new_cell.shift) for new_cell in new_cells if new_cell.shift}
+    codes |= {roster.grid[new_cell.hospital_id][new_cell.day] for new_cell in new_cells} - {""}
     shifts = {shift.code: shift for shift in Shift.objects.filter(code__in=codes)}
-    for change in changes:
-        SwapCell.objects.create(swap=swap, nurse=nurses[change.hospital_id], date=change.date,
-                                before=shifts.get(roster.grid[change.hospital_id][change.day]),
-                                after=shifts.get(current_code(change.shift)) if change.shift else None)
+    for new_cell in new_cells:
+        SwapCell.objects.create(swap=swap, nurse=nurses[new_cell.hospital_id], date=new_cell.date,
+                                before=shifts.get(roster.grid[new_cell.hospital_id][new_cell.day]),
+                                after=shifts.get(current_code(new_cell.shift)) if new_cell.shift else None)
     colleagues = sorted((nurse for nurse in nurses.values() if nurse.pk != proposer.pk), key=lambda nurse: nurse.pk)
     SwapParticipant.objects.bulk_create([SwapParticipant(swap=swap, nurse=nurse) for nurse in colleagues])
     record("swap.proposed", actor=user, target=user.username, request=request)
@@ -165,7 +166,7 @@ def withdraw(user: User, swap_id: UUID, request: HttpRequest) -> Swap:
     return swap
 
 
-def changes_of(swap: Swap) -> list[NewCell]:
+def new_cells_of(swap: Swap) -> list[NewCell]:
     return [NewCell(cell.nurse.user.username, cell.date, cell.after.code if cell.after else None)
             for cell in swap.cells.select_related("nurse__user", "after")]
 
@@ -204,8 +205,8 @@ def approve(held: in_force.Held, swap: Swap, by: User, reason: str, request: Htt
     refusal = why_not_decide(swap)
     if refusal:
         raise HttpError(409, refusal)
-    changes = changes_of(swap)
-    judged = judge(held.roster, changes, None, exclude=swap)
+    new_cells = new_cells_of(swap)
+    judged = judge(held.roster, new_cells, None, exclude=swap)
     if judged.problems:
         raise HttpError(409, " ".join(dict.fromkeys(problem.manager for problem in judged.problems)))
     swap.state, swap.ended_by, swap.ended_at, swap.reason = SwapState.APPROVED, by, timezone.now(), reason
@@ -220,7 +221,7 @@ def approve(held: in_force.Held, swap: Swap, by: User, reason: str, request: Htt
     # The swap's own entry first, then the roster-change entry the change writes.
     record("swap.approved", actor=by, target=swap.proposer.user.username, request=request)
     try:
-        version = in_force.change(held, changes, origin=in_force.Origin.SWAP, by=by, reason=reason_for_version, pins=len(cells),
+        version = in_force.change(held, new_cells, origin=in_force.Origin.SWAP, by=by, reason=reason_for_version, pins=len(cells),
                                   request=request)
     except in_force.Refused as refused:
         raise HttpError(409, str(refused)) from None
