@@ -342,8 +342,8 @@ class TestTheirOrder:
         assert cells.may_hold("Emad", day(3), SWAP, None) == Answer(reason=Reason("held", origin="request"))
 
 
-# Each reason's reader class, as the spec states it: private to the nurse and her manager, or shown as it is because My roster
-# shows it.
+# Each reason's reader class: private to the nurse and her manager (her dates, her leave, her bar, her allowed shifts, the pin
+# on her cell), or shown as it is because My roster shows it (the unit's shifts, who is on probation).
 READERS = {"not_in_month": PRIVATE, "outside_dates": PRIVATE, "leave": PRIVATE, "shift_not_worked": SHOWN, "barred": PRIVATE,
            "shift_not_allowed": PRIVATE, "night_on_probation": SHOWN, "held": PRIVATE}
 
