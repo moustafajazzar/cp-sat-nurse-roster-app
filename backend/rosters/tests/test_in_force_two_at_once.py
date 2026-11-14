@@ -15,7 +15,7 @@ from nurses import membership
 from nurses.models import NurseProfile
 from nurses.tests.test_two_at_once import alongside
 from rosters import in_force
-from rosters.approved import NewCell
+from rosters.cells import NewCell
 from rosters.drafts import in_current_codes
 from rosters.models import Roster
 from rosters.tests.conftest import approved_roster, locks_on
