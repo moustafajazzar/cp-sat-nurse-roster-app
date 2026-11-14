@@ -31,8 +31,8 @@ class MonthPins:
     rows: list[PinnedCell] = field(default_factory=list)
 
 
-def month_pins(unit: Unit, month: dt.date, *, facts: bool = False) -> MonthPins:
-    """Each pin of the unit's month with why it is set aside, as `rosters.cells` judges it. `facts` for a month that is over,
+def month_pins(unit: Unit, month: dt.date, *, over: bool = False) -> MonthPins:
+    """Each pin of the unit's month with why it is set aside, as `rosters.cells` judges it. `over` for a month that is over,
     which its close makes fact: a pin set aside because of its day (the nurse not in the month, outside her dates, on leave)
     still counts for nothing, but one on a shift the unit has stopped working, or the nurse may no longer work, since it was set
     was worked, and counts, under the shift's code now."""
@@ -41,7 +41,7 @@ def month_pins(unit: Unit, month: dt.date, *, facts: bool = False) -> MonthPins:
     cells = MonthCells(unit, month)
     pins = MonthPins()
     for pin in cells.pins:
-        pin.aside = cells.set_aside(pin, over=facts)
+        pin.aside = cells.set_aside(pin, over=over)
         pins.rows.append(pin)
         if pin.aside is None:
             pins.counted.setdefault(pin.nurse.user.username, {})[pin.date.isoformat()] = pin.code

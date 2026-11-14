@@ -111,7 +111,7 @@ def close_input(unit: Unit, month: dt.date, in_force: dict[str, dict[str, str]],
     `replan_from`. A month that is over takes its pins as facts (`rosters.pins.month_pins`) and the shifts its roster and pins hold
     as worked, whatever the unit and the catalogue say now (`_as_it_was_worked`)."""
     over = month < membership.this_month()
-    assembled = assemble_replan(unit, month, next_month(month), in_force, chain=chain, facts=over)
+    assembled = assemble_replan(unit, month, next_month(month), in_force, chain=chain, over=over)
     if over:
         _as_it_was_worked(unit, month, assembled.input)
     return assembled
