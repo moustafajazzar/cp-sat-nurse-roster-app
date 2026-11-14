@@ -10,7 +10,7 @@ from accounts.models import User
 from hospital.models import LeaveType, Shift, ShiftRename
 from nurses.models import Leave, NurseProfile, Placement
 from nurses.tests.conftest import make_unit
-from rosters.cells import COVER, EDIT, REQUEST, SWAP, Answer, MonthCells, Reason
+from rosters.cells import COVER, EDIT, REQUEST, SWAP, Answer, MonthCells, NewCell, Reason, newly_broken
 from rosters.models import PinEnded, PinnedCell, PinOrigin, Roster, RosterState
 from rosters.pins import end
 from rosters.tests.conftest import approved_roster
@@ -338,3 +338,154 @@ class TestTheirOrder:
 
         assert cells.may_hold("Emad", day(3), SWAP, "N") == Answer(reason=Reason("shift_not_allowed", shift="N"))
         assert cells.may_hold("Emad", day(3), SWAP, None) == Answer(reason=Reason("held", origin="request"))
+
+
+def short_of_day_nurses(unit) -> None:
+    """Day takes three nurses every day, so the roster in force, with one or two on it, is already short on each."""
+    unit.rules["headcounts"][0].update(weekday_min=3, weekday_max=3, weekend_min=3, weekend_max=3)
+    unit.save()
+
+
+class TestWhatAChangeNewlyBreaks:
+    """Asked of a grid, here the roster in force of June, on which Badr alone works Day on the 9th and Dana Night."""
+
+    def test_a_new_cell_breaking_a_rule_returns_its_violation(self, er):
+        roster = approved_roster(er)
+        short_of_day_nurses(er)
+
+        broken = MonthCells(er, JUNE).breaks(roster.grid, [NewCell("Badr", day(9), "N")])
+
+        assert sorted(row["text"] for row in broken.violations) == [
+            "headcount: 2026-06-09 D = 0, want 3..3",
+            "night rest: Badr D 2026-06-11 has only 1 day(s) off since N 2026-06-09, needs 2"]
+
+    def test_a_rule_the_roster_already_breaks_is_not_returned(self, er):
+        roster = approved_roster(er)
+        short_of_day_nurses(er)
+
+        broken = MonthCells(er, JUNE).breaks(roster.grid, [NewCell("Emad", day(9), "D")])
+
+        assert "headcount: 2026-06-09 D = 1, want 3..3" in [row["text"] for row in broken.before.violations]
+        assert broken.violations == []
+        assert broken.grid["Emad"]["2026-06-09"] == "D" and roster.grid["Emad"]["2026-06-09"] == ""
+
+    def test_a_pin_the_new_cell_replaces_does_not_count_against_it(self, er):
+        roster = approved_roster(er)
+        pinned(er, "Badr", 9, "D", PinOrigin.MANAGER)
+
+        broken = MonthCells(er, JUNE).breaks(roster.grid, [NewCell("Badr", day(9), None), NewCell("Emad", day(9), "D")])
+
+        assert broken.violations == []
+
+    def test_a_grid_the_solvers_code_refuses_is_an_answer_not_an_error(self, er):
+        roster = approved_roster(er)
+        er.rules["night_shift"] = "ZZ"
+        er.save()
+
+        broken = MonthCells(er, JUNE).breaks(roster.grid, [NewCell("Emad", day(9), "D")])
+
+        assert broken.after.reason and broken.violations == []
+
+    def test_asking_of_a_cell_alone_runs_nothing_of_the_solvers(self, er, monkeypatch):
+        roster = approved_roster(er)
+        pin = pinned(er, "Amal", 3, "N", PinOrigin.MANAGER)
+
+        def the_solvers_code(*args):
+            raise AssertionError("the solver's code ran")
+        monkeypatch.setattr("rosters.cells.assemble", the_solvers_code)
+        monkeypatch.setattr("rosters.cells.scored", the_solvers_code)
+        cells = MonthCells(er, JUNE)
+
+        assert cells.may_hold("Amal", day(3), EDIT, "D") == Answer(replaces=pin)
+        assert cells.may_change("Amal", day(3), EDIT) == Answer(replaces=pin)
+        assert cells.cannot_hold("Emad", day(3), "N") == Reason("shift_not_allowed", shift="N")
+        assert cells.set_aside(pin) is None
+        with pytest.raises(AssertionError, match="the solver's code ran"):
+            cells.breaks(roster.grid, [NewCell("Emad", day(9), "D")])
+
+
+# What a change newly breaks, compared on the violations alone: those of the grid, and those of the grid it would make.
+
+
+def headcount(present: int, shift: str = "D", date: str = "2026-06-09") -> dict:
+    """A D or N shift-day that takes two or three nurses, holding `present`."""
+    return {"rule": "headcount", "nurse": None, "date": date, "text": f"{present} work {shift}", "shift": shift,
+            "present": present, "minimum": 2, "maximum": 3}
+
+
+def skill_need(present: int, skill: str = "ICU", shift: str = "N", date: str = "2026-06-09") -> dict:
+    """A shift-day that needs two nurses holding `skill`, with `present` of them on it, as the solver states it."""
+    return {"rule": "skill_need", "nurse": None, "date": date, "shift": shift, "skill": skill, "present": present, "minimum": 2,
+            "text": f"skill need: {date} {shift} has {present} holding {skill}, needs 2 ({2 - present} short)"}
+
+
+OVERTIME = {"rule": "hours_bounds", "nurse": "Amal", "date": None, "text": "overtime: Amal 60 > cap 48"}
+NO_LEADER = {"rule": "team_leader", "nurse": None, "date": "2026-06-09", "text": "team leader: 2026-06-09 D has none", "shift": "D"}
+
+
+def test_what_the_roster_in_force_already_breaks_is_not_new():
+    assert newly_broken([OVERTIME, NO_LEADER, headcount(0)], [OVERTIME, NO_LEADER, headcount(0)]) == []
+
+
+def test_a_headcount_nearer_its_range_is_not_new():
+    assert newly_broken([headcount(0)], [headcount(1)]) == []
+    assert newly_broken([headcount(5)], [headcount(4)]) == []
+
+
+def test_a_headcount_further_from_its_range_is_new():
+    assert newly_broken([headcount(1)], [headcount(0)]) == [headcount(0)]
+    assert newly_broken([headcount(4)], [headcount(5)]) == [headcount(5)]
+
+
+def test_a_headcount_broken_on_another_shift_day_is_new():
+    assert newly_broken([headcount(0, "D")], [headcount(0, "D"), headcount(1, "N")]) == [headcount(1, "N")]
+    assert newly_broken([headcount(0)], [headcount(0), headcount(1, date="2026-06-10")]) == [headcount(1, date="2026-06-10")]
+
+
+def test_another_rule_whose_words_differ_is_broken_further_so_new():
+    further = OVERTIME | {"text": "overtime: Amal 72 > cap 48"}
+
+    assert newly_broken([OVERTIME], [further]) == [further]
+
+
+def test_the_same_rule_on_another_shift_of_the_day_is_new():
+    on_nights = NO_LEADER | {"shift": "N", "text": "team leader: 2026-06-09 N has none"}
+
+    assert newly_broken([NO_LEADER], [NO_LEADER, on_nights]) == [on_nights]
+
+
+def test_a_roster_in_force_that_breaks_nothing_makes_everything_new():
+    assert newly_broken([], [OVERTIME, headcount(1)]) == [OVERTIME, headcount(1)]
+
+
+def test_a_skill_need_narrowed_is_not_new():
+    assert newly_broken([skill_need(0)], [skill_need(1)]) == []
+
+
+def test_a_skill_need_as_short_as_before_is_not_new():
+    assert newly_broken([skill_need(1)], [skill_need(1)]) == []
+
+
+def test_a_skill_need_widened_is_new():
+    assert newly_broken([skill_need(1)], [skill_need(0)]) == [skill_need(0)]
+
+
+def test_a_need_of_another_skill_on_the_same_shift_day_is_new():
+    triage = skill_need(1, skill="Triage")
+
+    assert newly_broken([skill_need(0)], [skill_need(1), triage]) == [triage]
+
+
+def test_a_skill_need_on_another_shift_day_is_new():
+    on_days = skill_need(1, shift="D")
+    next_night = skill_need(1, date="2026-06-10")
+
+    assert newly_broken([skill_need(0)], [skill_need(0), on_days, next_night]) == [on_days, next_night]
+
+
+def test_a_skill_need_that_does_not_state_its_figures_is_compared_by_its_words():
+    def worded(present: int) -> dict:
+        return {key: value for key, value in skill_need(present).items() if key not in ("skill", "present", "minimum")}
+
+    assert newly_broken([worded(1)], [worded(1)]) == []
+    assert newly_broken([worded(0)], [worded(1)]) == [worded(1)]

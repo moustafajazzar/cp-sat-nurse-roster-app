@@ -161,7 +161,7 @@ class TestComposing:
 
 class TestAShortShiftDay:
     """A headcount the roster in force already breaks is judged by how far it is outside its range, as a cover's is
-    (`rosters.approved.newly_broken`): the solver's text changes with the count, so comparing the text would count one more
+    (`rosters.cells.newly_broken`): the solver's text changes with the count, so comparing the text would count one more
     nurse on a short shift-day as breaking it anew."""
 
     def test_a_swap_bringing_a_short_shift_day_nearer_its_minimum_is_not_refused_for_it(self, in_force, nurse, mona):

@@ -23,8 +23,7 @@ from notifications import sending
 from nurses import membership
 from nurses.api import MonthText
 from rosters import in_force, review
-from rosters.approved import NewCell
-from rosters.cells import AsideWhy
+from rosters.cells import AsideWhy, NewCell
 from rosters.drafts import FROZEN, MONTH_OVER, in_current_codes
 from rosters.editing import Checked, DraftEdits, Edit, check_saved, scored, with_edits
 from rosters.grids import GridView, full_names, grid_view

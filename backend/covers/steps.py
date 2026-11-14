@@ -27,7 +27,7 @@ from notifications import sending
 from notifications.sending import CoverStep
 from nurses.models import NurseProfile
 from rosters import in_force
-from rosters.approved import NewCell
+from rosters.cells import NewCell
 from rosters.models import PinOrigin
 from rosters.pins import long_date, pin_cell
 from rosters.review import name_of

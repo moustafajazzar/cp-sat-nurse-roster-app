@@ -10,7 +10,7 @@ import logging
 from notifications.models import SolveOutcome
 from nurses import membership
 from rosters import in_force
-from rosters.approved import NewCell
+from rosters.cells import NewCell
 from rosters.drafts import FROZEN, in_current_codes
 from rosters.models import Roster, RosterState
 from rosters.pins import long_date

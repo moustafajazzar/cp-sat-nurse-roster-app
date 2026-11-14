@@ -19,14 +19,12 @@ from accounts.models import Role
 from nurses import membership
 from nurses.models import NurseProfile
 from requesting.models import what_of
-from rosters.approved import ApprovedMonth, NewCell, newly_broken, with_pins
 from rosters.cell_words import bar_said, manager_said
-from rosters.cells import SWAP, Reason
-from rosters.editing import Checked, scored
+from rosters.cells import SWAP, MonthCells, NewCell, Reason
+from rosters.checking import Checked
 from rosters.models import Roster
 from rosters.pins import long_date
 from rosters.versions import Grid
-from solves.input import assemble
 from swaps.models import WAITING, Swap, SwapCell
 
 # A shift-day rule with no nurse that says nothing of anyone: how many work it, which any reader of the roster can count.
@@ -86,16 +84,24 @@ def cannot_work_for(name: str, day: dt.date | None) -> str:
     return f"This swap cannot work for {name} on {long_date(day)}." if day else f"This swap cannot work for {name}."
 
 
-class SwapMonth(ApprovedMonth):
-    """An approved roster's month as a swap reads it, read once for all of a swap's cells. `exclude` is the swap being judged
-    again, whose own cells are not another swap's."""
+class SwapMonth:
+    """The roster in force's month as a swap reads it, read once for all of a swap's cells. Whether each cell can hold its
+    change, and what the changed grid newly breaks, are asked of the month's cells (`rosters.cells`). `exclude` is the swap
+    being judged again, whose own cells are not another swap's."""
 
     def __init__(self, roster: Roster, exclude: Swap | None = None):
-        super().__init__(roster)
+        self.roster, self.month = roster, roster.month
+        self.cells = MonthCells(roster.unit, roster.month)
+        # Everyone with a row on the grid, one no longer in the month included, whom the cells do not plan for.
+        on_grid = NurseProfile.objects.filter(user__username__in=list(roster.grid)).select_related("user")
+        self.on_grid = {nurse.user.username: nurse for nurse in on_grid}
         waiting = SwapCell.objects.filter(swap__roster=roster, swap__state__in=WAITING)
         if exclude is not None:
             waiting = waiting.exclude(swap=exclude)
         self.in_other_swaps = set(waiting.values_list("nurse_id", "date"))
+
+    def cell(self, hospital_id: str, day: dt.date) -> str:
+        return self.roster.grid.get(hospital_id, {}).get(day.isoformat(), "")
 
 
 def _in_her_words(reason: Reason, on: str, month: dt.date) -> str | None:
@@ -136,7 +142,7 @@ def _cell_problem(month: SwapMonth, new_cell: NewCell, index: int, proposer: Nur
         # Her row sits under "On probation" on My roster, so saying so tells no one more than the roster does.
         return Problem.said(on_probation_said(month.month) if mine else
                             f"{name} is on probation in {month.month:%B %Y}, so a swap cannot change their cells.", index)
-    shift = month.shift_of(new_cell.shift)
+    shift = month.cells.shift(new_cell.shift) if new_cell.shift else None
     if new_cell.shift and shift is None:
         # Asked here, ahead of the cell's other reasons, and said to everyone as the manager reads it: the unit's shifts are
         # on My roster.
@@ -196,15 +202,13 @@ def judge(roster: Roster, new_cells: list[NewCell], proposer: NurseProfile | Non
             judged.problems.append(problem)
     if judged.problems:
         return judged
-    solve_input = assemble(month.unit, month.month).input
-    judged.grid = month.grid_after(new_cells)
-    judged.before = scored(solve_input, roster.grid)
-    judged.after = scored(with_pins(solve_input, month, new_cells), judged.grid)
+    broken = month.cells.breaks(roster.grid, new_cells)
+    judged.grid, judged.before, judged.after = broken.grid, broken.before, broken.after
     if judged.after.reason:
         judged.problems.append(Problem(f"The swap cannot be checked: {judged.after.reason}",
                                        "This swap cannot be checked against the roster now. Ask your manager."))
         return judged
-    preceptors = {row["id"]: row["preceptor"] for row in solve_input["nurses"] if row.get("preceptor")}
-    for violation in newly_broken(judged.before.violations, judged.after.violations):
+    preceptors = {row["id"]: row["preceptor"] for row in month.cells.solve_input["nurses"] if row.get("preceptor")}
+    for violation in broken.violations:
         judged.problems.append(_violation_problem(violation, month, new_cells, proposer, preceptors))
     return judged
