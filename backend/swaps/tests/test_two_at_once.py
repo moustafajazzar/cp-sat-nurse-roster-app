@@ -158,6 +158,6 @@ def test_a_proposal_that_meets_a_transfer_of_its_proposer_takes_each_lock_once_i
         assert not proposal.done()
 
     tables = ("hospital_hospitalsettings", "nurses_nurseprofile", "units_unit", "rosters_roster")
-    locks = locks_on(proposal.result(), *tables)
+    locks = locks_on(proposal.result(), *tables, every=True)
     assert [table for table, _ in locks] == list(tables)
     assert str(other.pk).replace("-", "") in locks[2][1]

@@ -26,6 +26,7 @@ from nurses.models import NurseProfile
 from ops import solver_client
 from requesting.models import PreferenceKind
 from rosters.models import PinnedCell, Roster, RosterState
+from rosters.tests.conftest import locks_on
 from rosters.tests.test_pins import change_shift
 from rosters.tests.test_review import (SOUND, approve, carla, nurses_of_er, ok, record_leave, refused, solved,  # noqa: F401
                                       submit, url)
@@ -197,11 +198,11 @@ class TestTheSchedule:
         with CaptureQueriesContext(connection) as queries:
             making.catch_up(at(dt.date(2026, 7, 1), 1))
 
-        locks = [query["sql"] for query in queries.captured_queries if " FOR " in query["sql"]]
-        tables = [next(table for table in ("hospital_hospitalsettings", "nurses_nurseprofile", "units_unit", "rosters_roster",
-                                           "requesting_request") if f'FROM "{table}"' in sql) for sql in locks]
-        assert tables[:4] == ["hospital_hospitalsettings", "nurses_nurseprofile", "units_unit", "rosters_roster"]
-        nurses = locks[1]
+        locks = locks_on(queries.captured_queries, "hospital_hospitalsettings", "nurses_nurseprofile", "units_unit",
+                         "rosters_roster", "requesting_request", every=True)
+        assert [table for table, _ in locks[:4]] == ["hospital_hospitalsettings", "nurses_nurseprofile", "units_unit",
+                                                     "rosters_roster"]
+        nurses = locks[1][1]
         assert "FOR NO KEY UPDATE OF" in nurses and '"nurses_nurseprofile"' in nurses.split("FOR NO KEY UPDATE OF")[1]
         assert '"accounts_user"' in nurses.split("FOR NO KEY UPDATE OF")[1]
 

@@ -148,4 +148,4 @@ def test_a_decision_locks_the_requests_row_after_the_months_roster(mona, er, sol
         assert decide(mona, er, made["id"], "accept").status_code == 200
 
     tables = ("hospital_hospitalsettings", "nurses_nurseprofile", "units_unit", "rosters_roster", "requesting_request")
-    assert [table for table, _ in locks_on(queries.captured_queries, *tables)][:5] == list(tables)
+    assert [table for table, _ in locks_on(queries.captured_queries, *tables, every=True)][:5] == list(tables)

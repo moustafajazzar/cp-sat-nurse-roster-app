@@ -29,8 +29,13 @@ def approved_roster(unit: Unit, month: str = "2026-06") -> Roster:
     return roster
 
 
-def locks_on(queries: list[dict], *tables: str) -> list[tuple[str, str]]:
+def locks_on(queries: list[dict], *tables: str, every: bool = False) -> list[tuple[str, str]]:
     """Each row lock these captured queries (`CaptureQueriesContext.captured_queries`) took on one of these tables, in the order
-    taken, as the table and its statement: how a test proves the order of the locks at the database itself."""
-    return [(table, query["sql"]) for query in queries if " FOR " in query["sql"]
-            for table in tables if f'FROM "{table}"' in query["sql"]]
+    taken, as the table and its statement: how a test proves the order of the locks at the database itself. With `every`, a
+    lock on a table not named fails the test, so none passes unseen between the ones a proof of the whole order lists."""
+    locks = []
+    for sql in (query["sql"] for query in queries if " FOR " in query["sql"]):
+        named = [table for table in tables if f'FROM "{table}"' in sql]
+        assert named or not every, f"A lock on a table the test did not name: {sql}"
+        locks.extend((table, sql) for table in named)
+    return locks

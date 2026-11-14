@@ -71,15 +71,15 @@ def test_a_hold_locks_the_catalogue_the_nurses_and_their_users_the_unit_then_the
         held_for(er, nurses)
 
     tables = ("hospital_hospitalsettings", "nurses_nurseprofile", "units_unit", "rosters_roster")
-    locks = locks_on(queries.captured_queries, *tables)
+    locks = locks_on(queries.captured_queries, *tables, every=True)
     assert [table for table, _ in locks] == list(tables)
     held = locks[1][1].split("FOR NO KEY UPDATE OF")[1]
     assert '"nurses_nurseprofile"' in held and '"accounts_user"' in held
 
 
 def test_of_two_changes_at_once_the_second_waits_and_is_the_next_version_built_on_the_first(er, june, pool):
-    """Different nurses' cells, so their locks do not meet: the second waits at the catalogue's, the first lock every change
-    takes, and reads the roster only once the first has committed."""
+    """Different nurses' cells, so their locks do not meet: the second waits at the catalogue's, the first lock `hold` takes,
+    and reads the roster only once the first has committed."""
     with transaction.atomic():
         changed(er, NewCell("Amal", dt.date(2026, 6, 9), "N"))
         second = alongside(pool, lambda: changed(er, NewCell("Badr", dt.date(2026, 6, 2), None), reason="Badr asked."))
