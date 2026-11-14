@@ -3,11 +3,16 @@ request alike, so that no two of them can give different accounts of one fact. A
 roster, so the month is read from the nurses, their leave and the unit's rules, and needs none.
 
 Each origin keeps its own rules, checked before it asks here, and every sentence it says to a nurse. Nothing here says anything
-to anyone: a reason is a value, worded beside this module for a manager (`rosters.cell_words`) and by each origin for a nurse."""
+to anyone: a reason is a value, worded beside this module for a manager (`rosters.cell_words`) and by each origin for a nurse.
+
+Asked of a grid, it also says what a change would newly break (`MonthCells.breaks`), with the solver's own code. Each origin
+decides what a newly broken rule means to it: a swap and a cover are refused for one."""
 from __future__ import annotations
 
+import copy
 import datetime as dt
 from dataclasses import dataclass
+from functools import cached_property
 from typing import Literal
 
 from hospital.models import Shift
@@ -16,9 +21,12 @@ from nurses import membership, probation
 from nurses.models import Leave, NurseProfile
 from nurses.rostering import skills_block
 from nurses.skills import current_skills
+from rosters.checking import Checked, scored
 from rosters.drafts import current_code
 from rosters.models import PinnedCell, PinOrigin
-from solves.input import barred_from
+from rosters.versions import Grid
+from solves.input import assemble, barred_from
+from solves.result import headcount_of, shift_day, skill_need_of
 from units.models import Unit
 
 # Why a cell could not hold what is asked whatever pin is on it, and so why a saved pin is set aside. The API's schema lists
@@ -70,6 +78,30 @@ class Answer:
     replaces: PinnedCell | None = None
 
 
+@dataclass(frozen=True)
+class NewCell:
+    """One cell a change asks for: a nurse's date and what it should hold, a shift's code or None for a day off."""
+    hospital_id: str
+    date: dt.date
+    shift: str | None
+
+    @property
+    def day(self) -> str:
+        return self.date.isoformat()
+
+
+@dataclass(frozen=True)
+class Broken:
+    """What a change newly breaks on a grid: `before` is the grid's check and `after` the changed grid's, each with the
+    solver's own code, `grid` the changed grid, and `violations` the hard rules it newly breaks. A grid or rules the solver's
+    code refuses are an answer to show, not an error: that check's `reason` says why, and nothing is newly broken when the
+    changed grid could not be checked."""
+    before: Checked
+    after: Checked
+    grid: Grid
+    violations: list[dict]
+
+
 class MonthCells:
     """The cells of a unit's month, read once for every question asked of them. A nurse is named by her hospital ID, as a
     grid and every origin name her."""
@@ -97,6 +129,7 @@ class MonthCells:
         # among them: it is this unit's still, and holds its cell here.
         self.pins = list(pins.order_by("nurse__user__username", "date"))
         self._pins = {(pin.nurse.user.username, pin.date): pin for pin in self.pins}
+        self._checked: tuple[Grid, Checked] | None = None
 
     def shift(self, code: str) -> Shift | None:
         """The shift this code names among those the unit works, an older code of it included; None for any other."""
@@ -154,3 +187,78 @@ class MonthCells:
         if nurse.user.username in self.on_probation and shift.code == self._night_shift:
             return Reason("night_on_probation", shift=shift.code)
         return None
+
+    @cached_property
+    def solve_input(self) -> dict:
+        """The month's solve input as it stands, which a grid is checked against. Read only once a grid is asked about, so asking
+        of a cell alone runs nothing of the solver's."""
+        return assemble(self.unit, self.month).input
+
+    def checked(self, grid: Grid) -> Checked:
+        """This grid's check with the solver's own code, on the month as it stands. The last grid's is kept: a cover asks what
+        each of the month's nurses would newly break on the one roster in force."""
+        if self._checked is None or self._checked[0] is not grid:
+            self._checked = (grid, scored(self.solve_input, grid))
+        return self._checked[1]
+
+    def breaks(self, grid: Grid, new_cells: list[NewCell]) -> Broken:
+        """What these new cells would newly break on `grid`, by `newly_broken`: a hard rule the grid already breaks is not the
+        change's. Each new cell is put in as a pin, so the solver's `pin` rule holds it, and a pin there that it replaces does not
+        count against it. Every new cell's nurse has a row on `grid`."""
+        before = self.checked(grid)
+        changed = copy.deepcopy(grid)
+        solve_input = copy.deepcopy(self.solve_input)
+        rows = {row["id"]: row for row in solve_input["nurses"]}
+        for new_cell in new_cells:
+            shift = self.shift(new_cell.shift) if new_cell.shift else None
+            changed[new_cell.hospital_id][new_cell.day] = shift.code if shift else ""
+            # A nurse the month's input does not plan for has no pin to hold; the loader leaves her out of the check.
+            if new_cell.hospital_id in rows:
+                rows[new_cell.hospital_id].setdefault("pinned", {})[new_cell.day] = shift.code if shift else ""
+        after = scored(solve_input, changed)
+        return Broken(before, after, changed, newly_broken(before.violations, after.violations) if after.answer else [])
+
+
+def _beyond(violation: dict) -> int:
+    """How far a headcount is outside its range."""
+    present, low, high = headcount_of(violation)
+    return low - present if present < low else present - high
+
+
+def _short(violation: dict) -> tuple[tuple, int] | None:
+    """A skill need's shift-day and skill, which name it (a shift-day can need several skills), and how many nurses holding
+    the skill it is short; None for another rule, or a need that does not state its figures."""
+    where, need = shift_day(violation), skill_need_of(violation)
+    if violation["rule"] != "skill_need" or where is None or need is None:
+        return None
+    skill, short = need
+    return (where, skill), short
+
+
+def _as_broken(violation: dict) -> tuple:
+    """A violation with how far it breaks its rule, which only its words say: one broken further reads differently."""
+    where = shift_day(violation)
+    return violation["rule"], violation["nurse"], violation["date"], where and where[1], violation["text"]
+
+
+def newly_broken(before: list[dict], after: list[dict]) -> list[dict]:
+    """The violations of `after` that `before` does not hold, or holds broken less: what a change to a grid breaks, between
+    the grid's violations and the changed grid's. A hard rule the grid already breaks is not the change's, since an edit may
+    save one. A headcount is compared by how far it is outside its range, and a skill need by how many nurses holding its skill
+    it is short, as their words change when they come nearer: one more nurse on a short shift-day breaks it less, not anew. Any
+    other rule, or a skill need that does not state its figures, is compared by its words."""
+    already = {_as_broken(violation) for violation in before}
+    headcounts = {shift_day(row): _beyond(row) for row in before if row["rule"] == "headcount" and shift_day(row)}
+    needs = dict(short for row in before if (short := _short(row)))
+    new = []
+    for violation in after:
+        where, short = shift_day(violation), _short(violation)
+        if violation["rule"] == "headcount" and where in headcounts:
+            if _beyond(violation) > headcounts[where]:
+                new.append(violation)
+        elif short is not None and short[0] in needs:
+            if short[1] > needs[short[0]]:
+                new.append(violation)
+        elif _as_broken(violation) not in already:
+            new.append(violation)
+    return new
