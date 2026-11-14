@@ -382,6 +382,24 @@ class TestWhatANurseMayRequest:
         assert refused(ask(as_user("Amal"), 3), 422) == (
             "You are on leave on 3 June 2026, so there is nothing to request that day.")
 
+    @pytest.mark.parametrize("origin, words", [
+        (PinOrigin.SWAP, "Your approved swap holds your cell on 3 June 2026, so a request that day could not be accepted. Ask "
+                         "your manager if it has to change."),
+        (PinOrigin.COVER, "The cover you took holds your cell on 3 June 2026, so a request that day could not be accepted. "
+                          "Ask your manager if it has to change."),
+    ])
+    def test_a_date_her_own_swap_or_cover_holds_is_refused_on_its_date_naming_which(self, mona, er, origin, words):
+        opened(mona, er)
+        PinnedCell.objects.create(unit=er, nurse=profile("Amal"), date=dt.date(2026, 6, 3), shift=Shift.objects.get(code="N"),
+                                  origin=origin, pinned_by=User.objects.get(username="mona"))
+        amal = as_user("Amal")
+
+        for shift in (None, "D", "XX"):
+            response = ask(amal, 3, shift)
+            assert refused(response, 422) == words
+            assert response.json()["detail"][0]["loc"][-1] == "date"
+        assert mine(amal)["requests"] == []
+
     def test_a_shift_on_a_day_an_expired_required_skill_bars_is_refused_in_her_own_words_and_a_day_off_is_not(self, mona, er):
         """She reads her own skills on My month, so her reason is said in full; a day off is hers to ask for."""
         from rosters.tests.test_review import holding
