@@ -39,7 +39,9 @@ export function CellEditor({ cell, anchor, onChoose, onUndo, onClose, covers }: 
   covers?: CoverChoices
 }) {
   const edit = (action: EditBody["action"], shift?: string): EditBody => ({ hospital_id: cell!.hospitalId, date: cell!.date, action, ...(shift ? { shift } : {}) })
-  const fromElsewhere = cell?.pin && cell.pin.origin !== "manager"
+  // A request's pin is a promise to one nurse, changed on its own page where she is told; a swap's or a cover's has no such
+  // page, so the manager's edit replaces it like their own.
+  const fromElsewhere = cell?.pin?.origin === "request"
   return (
     <Menu.Root open={cell !== null} onOpenChange={(open) => { if (!open) onClose() }} modal={false}>
       <Menu.Portal>
