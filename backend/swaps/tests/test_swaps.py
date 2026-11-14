@@ -13,7 +13,7 @@ from notifications.tests.test_events import as_user, told
 from nurses.models import NurseProfile, Placement
 from requesting.tests.conftest import asked, decided as request_decided, opened
 from rosters.models import PinEnded, PinnedCell, PinOrigin, Roster, RosterVersion, VersionOrigin
-from rosters.tests.test_pins import icu, pin, saved
+from rosters.tests.test_pins import clear, icu, off, pin, saved
 from rosters.tests.test_review import approve, approved, ok as roster_ok, solved, submit
 from rosters.tests.test_versions import changed, in_force_agrees
 from solves.tests.conftest import nurse_in
@@ -663,6 +663,46 @@ class TestTheManagersDecision:
 
         ended = PinnedCell.objects.get(origin=PinOrigin.MANAGER)
         assert ended.removed_why == PinEnded.REPLACED
+
+    def test_the_managers_edit_replaces_its_pins_in_a_version_of_her_own_and_the_swap_stays_approved(self, in_force, nurse,
+                                                                                                     mona):
+        """The manager puts the 9th back by hand. Everyone in the swap is told the roster changed, as every nurse of the unit
+        is, and nothing of their own about the swap."""
+        swap = awaiting(nurse)
+        decided(mona, in_force, swap["id"], "approve")
+        told_before = {name: steps_told(name) for name in ("Badr", "Emad")}
+        Notification.objects.filter(event=Event.ROSTER_CHANGED).delete()
+
+        changed(mona, in_force, pin("Badr", 9, "D"), off("Emad", 9), reason="Badr is needed on Day after all.")
+
+        version = RosterVersion.objects.filter(roster__unit=in_force).first()
+        assert (version.number, version.origin, version.reason) == (3, VersionOrigin.EDIT, "Badr is needed on Day after all.")
+        grid = in_force_grid(in_force)
+        assert (grid["Badr"]["2026-06-09"], grid["Emad"]["2026-06-09"]) == ("D", "")
+        pins = PinnedCell.objects.filter(date="2026-06-09").order_by("nurse__user__username", "pinned_at")
+        assert [(row.nurse.user.username, row.origin, row.code, row.removed_why) for row in pins] == [
+            ("Badr", PinOrigin.SWAP, "", "replaced"), ("Badr", PinOrigin.MANAGER, "D", ""),
+            ("Emad", PinOrigin.SWAP, "D", "replaced"), ("Emad", PinOrigin.MANAGER, "", "")]
+        assert decision(mona, in_force, swap["id"])["swap"]["state"] == "approved"
+        assert [row["state"] for row in mine(nurse("Badr"))] == ["approved"]
+        assert {name: steps_told(name) for name in ("Badr", "Emad")} == told_before
+        changed_to = set(Notification.objects.filter(event=Event.ROSTER_CHANGED).values_list("user__username", flat=True))
+        assert {"Badr", "Emad"} <= changed_to
+
+    def test_the_managers_clear_ends_its_pins_and_gives_the_cells_back_to_their_solve(self, in_force, nurse, mona):
+        """Badr works Day on the 9th in the solve, and Emad is off."""
+        swap = awaiting(nurse)
+        decided(mona, in_force, swap["id"], "approve")
+
+        changed(mona, in_force, clear("Badr", 9), clear("Emad", 9))
+
+        version = RosterVersion.objects.filter(roster__unit=in_force).first()
+        assert (version.number, version.origin) == (3, VersionOrigin.EDIT)
+        grid = in_force_grid(in_force)
+        assert (grid["Badr"]["2026-06-09"], grid["Emad"]["2026-06-09"]) == ("D", "")
+        assert not PinnedCell.objects.current().exists()
+        assert {row.removed_why for row in PinnedCell.objects.filter(origin=PinOrigin.SWAP)} == {PinEnded.CLEARED}
+        assert decision(mona, in_force, swap["id"])["swap"]["state"] == "approved"
 
     def test_approval_is_refused_with_the_reason_in_full_when_the_month_moved_since(self, in_force, nurse, mona):
         swap = awaiting(nurse)

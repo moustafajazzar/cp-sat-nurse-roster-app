@@ -43,7 +43,7 @@ Holds = Shift | str | None
 # cell against that change, set aside or not, since a pin set aside is not ended and may count again. Leave asks nothing here:
 # it ends every pin on its days.
 YIELDS: dict[Asking, set[PinOrigin]] = {
-    EDIT: {PinOrigin.MANAGER},
+    EDIT: {PinOrigin.MANAGER, PinOrigin.SWAP, PinOrigin.COVER},
     SWAP: {PinOrigin.MANAGER, PinOrigin.SWAP, PinOrigin.COVER},
     COVER: {PinOrigin.MANAGER, PinOrigin.SWAP, PinOrigin.COVER},
     REQUEST: {PinOrigin.MANAGER, PinOrigin.REQUEST, PinOrigin.COVER},

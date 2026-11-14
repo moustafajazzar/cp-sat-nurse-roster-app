@@ -160,7 +160,7 @@ def pinned(unit, hospital_id: str, number: int, code: str, origin: PinOrigin) ->
 REPLACES, REFUSED = "replaces", "refused"
 # Which pin yields to which change as the app stands: {the origin asking: {the pin's origin: what becomes of the pin}}.
 YIELDS = {
-    EDIT: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REFUSED, PinOrigin.SWAP: REFUSED, PinOrigin.COVER: REFUSED},
+    EDIT: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REFUSED, PinOrigin.SWAP: REPLACES, PinOrigin.COVER: REPLACES},
     SWAP: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REFUSED, PinOrigin.SWAP: REPLACES, PinOrigin.COVER: REPLACES},
     COVER: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REFUSED, PinOrigin.SWAP: REPLACES, PinOrigin.COVER: REPLACES},
     REQUEST: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REPLACES, PinOrigin.SWAP: REFUSED, PinOrigin.COVER: REPLACES},

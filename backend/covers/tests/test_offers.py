@@ -16,8 +16,8 @@ from notifications.models import Event, Notification
 from nurses.models import NurseProfile, Placement
 from notifications.tests.test_events import as_user, told
 from rosters.models import PinnedCell, PinOrigin, Roster, VersionOrigin
-from rosters.tests.test_pins import icu, off, pin
-from rosters.tests.test_versions import change, changed
+from rosters.tests.test_pins import clear, icu, off, pin
+from rosters.tests.test_versions import changed
 
 pytestmark = pytest.mark.django_db
 
@@ -302,14 +302,40 @@ class TestAccepting:
         saved = ok(record_leave(mona, in_force, "Emad", 25), 201)
         assert [(pin["date"], pin["origin"]) for pin in saved["pins_removed"]] == [("2026-06-25", "cover")]
 
-    def test_the_managers_editor_refuses_a_cell_a_covers_pin_holds(self, in_force, mona):
+    def test_the_managers_edit_replaces_its_pin_in_a_version_of_her_own_and_the_cover_stays_taken(self, in_force, mona):
+        """Her taker is told the roster changed, as every nurse of the unit is, and nothing of her own about the cover."""
+        cover_id = the_25th(mona, in_force)
+        offered(mona, in_force, cover_id, "Emad")
+        answered(as_user("Emad"), cover_id, "accept")
+        Notification.objects.all().delete()
+
+        changed(mona, in_force, off("Emad", 25), reason="Emad is needed on the 26th instead.")
+
+        version = latest_version()
+        assert (version.number, version.origin, version.reason) == (3, VersionOrigin.EDIT, "Emad is needed on the 26th instead.")
+        assert Roster.objects.get().grid["Emad"]["2026-06-25"] == ""
+        pins = PinnedCell.objects.filter(nurse__user__username="Emad", date="2026-06-25").order_by("pinned_at")
+        assert [(row.origin, row.code, row.removed_why) for row in pins] == [
+            (PinOrigin.COVER, "D", "replaced"), (PinOrigin.MANAGER, "", "")]
+        page = cover_page(mona, in_force, cover_id)
+        assert (page["cover"]["state"], page["cover"]["taker"], page["cover"]["version"]) == ("taken", "Emad", 2)
+        assert my_covers(as_user("Emad"))[0]["state"] == "taken"
+        assert cover_told("Emad") == []
+        assert "Emad" in {note.user.username for note in Notification.objects.filter(event=Event.ROSTER_CHANGED)}
+
+    def test_the_managers_clear_ends_its_pin_and_gives_the_cell_back_to_its_solve(self, in_force, mona):
+        """Emad is off on the 25th in the solve."""
         cover_id = the_25th(mona, in_force)
         offered(mona, in_force, cover_id, "Emad")
         answered(as_user("Emad"), cover_id, "accept")
 
-        assert refusals(change(mona, in_force, off("Emad", 25))) == [
-            "This pin comes from an accepted cover, on 25 June 2026, so change it there."]
-        assert latest_version().number == 2
+        changed(mona, in_force, clear("Emad", 25))
+
+        assert (latest_version().number, latest_version().origin) == (3, VersionOrigin.EDIT)
+        assert Roster.objects.get().grid["Emad"]["2026-06-25"] == ""
+        [ended] = PinnedCell.objects.filter(nurse__user__username="Emad", date="2026-06-25")
+        assert (ended.origin, ended.removed_why) == (PinOrigin.COVER, "cleared")
+        assert cover_page(mona, in_force, cover_id)["cover"]["state"] == "taken"
 
 
 class TestOvertimeAboveAShare:

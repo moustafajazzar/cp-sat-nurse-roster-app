@@ -857,7 +857,7 @@ class TestLastSolve:
         assert month_of(mona, er)["last_solve"]["id"] == failed["id"]
 
 
-class TestRequestsAndSwapsPins:
+class TestARequestsPin:
     def row(self, er, origin) -> PinnedCell:
         return PinnedCell.objects.create(unit=er, nurse=profile("Amal"), date="2026-06-03", shift=None, origin=origin,
                                          pinned_by=User.objects.get(username="mona"))
@@ -886,6 +886,7 @@ class TestRequestsAndSwapsPins:
         assert save(mona, er, off("Faris", 3)).json()["detail"][0]["msg"] == words
         NurseProfile.objects.filter(user__username="Emad").update(end_date=dt.date(2026, 6, 2))
         assert save(mona, er, off("Emad", 3)).json()["detail"][0]["msg"] == words
+        assert save(mona, er, clear("Emad", 3)).json()["detail"][0]["msg"] == words, "set aside, it still holds its cell"
 
     def test_it_reaches_a_solve_like_any_other(self, mona, er, solver):
         solved(mona, er, solver)
@@ -893,6 +894,48 @@ class TestRequestsAndSwapsPins:
 
         assert input_row(assemble(er, dt.date(2026, 6, 1)).input, "Amal")["pinned"] == {"2026-06-03": ""}
         assert month_of(mona, er)["draft"]["pins"][0]["origin"] == "request"
+
+
+@pytest.mark.parametrize("origin", [PinOrigin.SWAP, PinOrigin.COVER])
+class TestASwapsOrACoversPin:
+    """Amal works Day on the 3rd in the solve, and the pin holds her off, on the draft as its origin would have left it."""
+
+    def row(self, er, origin) -> PinnedCell:
+        roster = Roster.objects.get(unit=er)
+        roster.grid["Amal"]["2026-06-03"] = ""
+        roster.save(update_fields=["grid"])
+        return PinnedCell.objects.create(unit=er, nurse=profile("Amal"), date="2026-06-03", shift=None, origin=origin,
+                                         pinned_by=User.objects.get(username="mona"))
+
+    def pins(self) -> list[tuple[str, str, str]]:
+        return [(row.origin, row.code, row.removed_why)
+                for row in PinnedCell.objects.filter(nurse__user__username="Amal", date="2026-06-03").order_by("pinned_at")]
+
+    def test_a_managers_edit_replaces_it(self, mona, er, solver, origin):
+        solved(mona, er, solver)
+        self.row(er, origin)
+
+        saved(mona, er, pin("Amal", 3, "N"))
+
+        assert self.pins() == [(origin, "", "replaced"), (PinOrigin.MANAGER, "N", "")]
+        assert Roster.objects.get(unit=er).grid["Amal"]["2026-06-03"] == "N"
+
+    def test_a_clear_ends_it_and_gives_the_cell_back_to_its_solve(self, mona, er, solver, origin):
+        solved(mona, er, solver)
+        self.row(er, origin)
+
+        saved(mona, er, clear("Amal", 3))
+
+        assert self.pins() == [(origin, "", "cleared")]
+        assert Roster.objects.get(unit=er).grid["Amal"]["2026-06-03"] == "D"
+
+    def test_an_edit_asking_what_it_holds_already_changes_nothing(self, mona, er, solver, origin):
+        solved(mona, er, solver)
+        self.row(er, origin)
+
+        saved(mona, er, off("Amal", 3))
+
+        assert self.pins() == [(origin, "", "")]
 
 
 class TestTheAuditLog:
