@@ -17,6 +17,7 @@ from rosters.tests.test_pins import clear, icu, off, pin, saved
 from rosters.tests.test_review import approve, approved, ok as roster_ok, solved, submit
 from rosters.tests.test_versions import changed, in_force_agrees
 from solves.tests.conftest import nurse_in
+from swaps.judging import NewCell, judge
 from swaps.models import Swap, SwapState
 from swaps.tasks import expire_swaps
 from swaps.tests.conftest import (MONTH, SOUND_SWAP, act, acted, cell, decide, decided, decision, mine, ok, propose, proposed,
@@ -211,41 +212,10 @@ class TestTheProposersOwnFacts:
         assert said and all(sentence.startswith("This swap breaks a rule for you: ") for sentence in said)
         assert any("Amal" in sentence for sentence in said)
 
-    def test_their_own_leave_is_named(self, in_force, nurse, mona):
-        assert leave_for(mona, in_force, "Badr", 9).status_code == 201
-
-        assert refusals(propose(nurse("Badr"), cell("Badr", 9, "N"), cell("Emad", 9, "D"))) == [
-            "You are on leave on 9 June 2026, so there is nothing to swap that day."]
-
-    def test_their_own_allowed_shifts_are_named(self, in_force, nurse):
-        assert refusals(propose(nurse("Emad"), cell("Emad", 9, "N"), cell("Badr", 9))) == [
-            "N is not one of the shifts you work."]
-
-    def test_their_own_accepted_request_is_named(self, mona, carla, er, solver, nurse):
-        solved(mona, er, solver)
-        opened(mona, er)
-        made = asked(nurse("Badr"), 9, "D")
-        request_decided(mona, er, made["id"], "accept")
-        roster_ok(submit(mona, er))
-        roster_ok(approve(carla, er))
-
-        assert refusals(propose(nurse("Badr"), *SOUND_SWAP)) == [
-            "Your accepted request holds your cell on 9 June 2026, so a swap cannot change it."]
-
     def test_what_their_cell_cannot_hold_is_said_before_their_accepted_request(self, in_force, nurse, mona):
         _request(mona, in_force)
 
         assert refusals(propose(nurse("Emad"), cell("Emad", 9, "N"))) == ["N is not one of the shifts you work."]
-
-    def test_their_own_expired_required_skill_is_named(self, in_force, nurse, mona):
-        """Her skills are hers to read on My month, so the bar on her own cell is said in full."""
-        from rosters.tests.test_review import holding
-        holding("Emad", "BLS", dt.date(2026, 6, 8), required=True)
-
-        assert refusals(propose(nurse("Emad"), cell("Emad", 9, "D"), cell("Badr", 9))) == [
-            "Your BLS, required to work, counted until 8 June 2026, so you can work no shift on 9 June 2026."]
-        TestWhatTheProposerMayNotLearn.the_manager_reads_why(
-            mona, in_force, "Emad's BLS, required to work, counted until 8 June 2026, so Emad can work no shift on 9 June 2026.", "D")
 
 
 class TestASkillNeed:
@@ -351,25 +321,74 @@ def _request(mona, unit):
     request_decided(mona, unit, made["id"], "accept")
 
 
+# Each reason the cell judgement classes as private (`rosters.cells.READERS`), as it comes to stand on Emad's cell on the 9th:
+# {reason: (the fact that sets it, the shift asked of his cell, what he reads of it himself, what the manager reads)}.
+PRIVATE_REASONS = {
+    "not_in_month": (_transfer, "D", "You have no days on this roster in June 2026.",
+                     "Emad is not on this unit's roster for June 2026."),
+    "outside_dates": (_end_date, "D", "9 June 2026 is outside your dates on the roster.",
+                      "9 June 2026 is outside Emad's dates, so there is nothing to pin."),
+    "leave": (_leave, "D", "You are on leave on 9 June 2026, so there is nothing to swap that day.",
+              "Emad is on leave on 9 June 2026, and leave wins over a pin."),
+    "barred": (_barred, "D", "Your BLS, required to work, counted until 8 June 2026, so you can work no shift on 9 June 2026.",
+               "Emad's BLS, required to work, counted until 8 June 2026, so Emad can work no shift on 9 June 2026."),
+    "shift_not_allowed": (None, "N", "N is not one of the shifts you work.", "N is not one of Emad's allowed shifts."),
+    "held": (_request, "D", "Your accepted request holds your cell on 9 June 2026, so a swap cannot change it.",
+             "An accepted request holds Emad's cell on 9 June 2026, so change it there."),
+}
+
+
+class TestEachPrivateReason:
+    """Worth the user's review. Each private reason on Emad's cell reaches a colleague who proposes it as the one hidden
+    sentence, reaches Emad himself in full, and the manager reads it in full."""
+
+    def test_every_private_reason_is_here(self):
+        from rosters.cells import PRIVATE, READERS
+        assert set(PRIVATE_REASONS) == {why for why, reader in READERS.items() if reader == PRIVATE}
+
+    @pytest.mark.parametrize("why", PRIVATE_REASONS)
+    def test_a_colleague_reads_the_hidden_sentence(self, in_force, nurse, mona, why):
+        fact, shift, _, manager_reads = PRIVATE_REASONS[why]
+        if fact:
+            fact(mona, in_force)
+
+        response = propose(nurse("Badr"), cell("Badr", 9), cell("Emad", 9, shift))
+
+        assert refusals(response) == ["This swap cannot work for Emad on 9 June 2026."]
+        nothing_hidden_in(response.content.decode())
+        assert not Swap.objects.exists() and not Notification.objects.filter(event=Event.SWAP_STEP).exists()
+        TestWhatTheProposerMayNotLearn.the_manager_reads_why(mona, in_force, manager_reads, shift)
+
+    @pytest.mark.parametrize("why", PRIVATE_REASONS)
+    def test_the_nurse_herself_reads_it_in_full(self, in_force, nurse, mona, why):
+        fact, shift, she_reads, _ = PRIVATE_REASONS[why]
+        if fact:
+            fact(mona, in_force)
+
+        if why == "not_in_month":
+            # Transferred out, he proposes on his new unit's roster, so his words here are read from the judgement.
+            judged = judge(Roster.objects.get(unit=in_force), [NewCell("Emad", dt.date(2026, 6, 9), shift),
+                                                               NewCell("Badr", dt.date(2026, 6, 9), None)], profile("Emad"))
+            assert judged.for_proposer() == [(0, she_reads)]
+        else:
+            assert refusals(propose(nurse("Emad"), cell("Emad", 9, shift), cell("Badr", 9))) == [she_reads]
+
+
 class TestWhatTheProposerMayNotLearn:
     """Worth the user's review. A refusal that rests on a colleague's facts says the same sentence whatever the fact: that the
     swap cannot work for them on that date. Each hidden fact of Emad's is set, Badr proposes Emad on Day on the 9th, and the
     answer holds nothing of it; the manager reads why."""
 
     @pytest.mark.parametrize("fact, shift, manager_reads", [
-        (_leave, "D", "Emad is on leave on 9 June 2026, and leave wins over a pin."),
-        (None, "N", "N is not one of Emad's allowed shifts."),
-        (_end_date, "D", "9 June 2026 is outside Emad's dates, so there is nothing to pin."),
-        (_transfer, "D", "Emad is not on this unit's roster for June 2026."),
         (_deactivated, "D", "Emad is not on this unit's roster for June 2026."),
         (_overtime, "D", "overtime"),
         (_ramadan_reduced, "D", "overtime"),
         (_breastfeeding, "D", "overtime"),
         (_hours_worked_ahead, "D", "overtime"),
-        (_barred, "D", "Emad's BLS, required to work, counted until 8 June 2026, so Emad can work no shift on 9 June 2026."),
-    ], ids=["leave", "allowed_shifts", "end_date", "transferred", "deactivated", "overtime", "ramadan_reduced", "breastfeeding",
-            "contract_hours", "barred_by_an_expired_skill"])
+    ], ids=["deactivated", "overtime", "ramadan_reduced", "breastfeeding", "contract_hours"])
     def test_a_colleagues_hidden_fact(self, in_force, nurse, mona, fact, shift, manager_reads):
+        """Each private reason on his cell is in `TestEachPrivateReason`; these are the facts that come to one by another way,
+        or to a rule broken on his row."""
         badr = nurse("Badr")
         if fact:
             fact(mona, in_force)
@@ -390,7 +409,6 @@ class TestWhatTheProposerMayNotLearn:
     @staticmethod
     def the_manager_reads_why(mona, unit, words, shift):
         """The same change, judged for the manager, says it in full."""
-        from swaps.judging import NewCell, judge
         judged = judge(Roster.objects.get(), [NewCell("Badr", dt.date(2026, 6, 9), None),
                                              NewCell("Emad", dt.date(2026, 6, 9), shift)], None)
         assert any(words in problem.manager for problem in judged.problems), [p.manager for p in judged.problems]
@@ -406,14 +424,6 @@ class TestWhatTheProposerMayNotLearn:
 
         assert refusals(propose(badr, cell("Badr", 9), cell("Emad", 9))) == ["Emad's cell on 9 June 2026 is already a day off."]
         assert refusals(propose(badr, cell("Badr", 9), cell("Emad", 9, "ZZ"))) == ["ZZ is not one of this unit's shifts."]
-
-    def test_a_colleagues_accepted_request(self, in_force, nurse, mona):
-        _request(mona, in_force)
-
-        response = propose(nurse("Badr"), *SOUND_SWAP)
-
-        assert refusals(response) == ["This swap cannot work for Emad on 9 June 2026."]
-        nothing_hidden_in(response.content.decode())
 
     def test_a_team_leader_missing_from_a_shift_day(self, in_force, nurse):
         rules_require(in_force, require_team_leader=True)
