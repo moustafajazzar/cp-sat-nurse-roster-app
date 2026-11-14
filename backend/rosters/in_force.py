@@ -247,7 +247,8 @@ def change(held: Held, cells: Iterable[NewCell], *, origin: Origin, by: User, re
     """Changes the roster in force held by `held`: the next version, or `UNCHANGED` when no cell differs. `pins` is how many
     pins the origin made or ended for it, for the audit entry; `solve` the one the grid came from, if any; `request` the HTTP
     request that asked, if any, whose client address the audit entry keeps. Refuses (`Refused`) a roster that is not approved
-    and a month that is over. Whoever made the change is not told of it."""
+    and a month that is over, as the hold answers it: an origin the hold told the month could change is not refused for a
+    month that ended since. Whoever made the change is not told of it."""
     from covers.expiring import on_new_version as fill_covers  # covers reads rosters, so not at the top.
     from swaps.expiring import on_new_version as expire_swaps  # swaps reads rosters, so not at the top.
 

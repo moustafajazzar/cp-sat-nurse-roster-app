@@ -15,6 +15,8 @@ from notifications.models import Notification
 from notifications.tests.test_events import as_user, told
 from nurses.models import NurseProfile, Placement
 from nurses.tests.conftest import make_unit
+from nurses import membership
+from requesting import deciding
 from requesting.deciding import MONTH_OVER
 from requesting.making import NO_CAP
 from requesting.models import RequestWindow
@@ -728,6 +730,23 @@ class TestAfterApproval:
         assert entries == [("request.accepted", "mona", "Amal", None),
                            ("roster.changed", "mona", "ER, 2026-06", {"version": 2, "pins": 1, "cells": 1})]
         assert AuditEntry.objects.get(action="roster.changed").ip is not None
+
+    def test_a_month_that_ends_while_a_request_is_accepted_still_takes_its_change(self, mona, carla, er, solver, monkeypatch):
+        """Midnight of the month's last day falls after the decision was judged and before the roster changes."""
+        approved(mona, carla, er, solver)
+        opened(mona, er)
+        made = asked(as_user("Amal"), 3)
+        pin_cell = deciding.pin_cell
+
+        def pin_then_midnight(*args, **kwargs):
+            pin = pin_cell(*args, **kwargs)
+            monkeypatch.setattr(membership, "today", lambda: dt.date(2026, 7, 1))
+            return pin
+
+        monkeypatch.setattr(deciding, "pin_cell", pin_then_midnight)
+
+        assert decided(mona, er, made["id"], "accept")["version"] == 2
+        assert roster(er).grid["Amal"]["2026-06-03"] == ""
 
     def test_editing_one_that_changes_a_cell_writes_it_too_and_what_changes_nothing_writes_none(self, mona, carla, er, solver):
         """Amal is off on the 5th already."""

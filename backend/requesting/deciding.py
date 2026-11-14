@@ -78,8 +78,10 @@ def locked_for_decision(user: User, unit_id: UUID, request_id: UUID) -> Decision
 
 
 def why_the_pin_cannot_move(decision: Decision) -> str | None:
-    """A month that is over and a submitted roster take no pin, and an accepted swap's pin is the swap's to change."""
-    if decision.month < membership.this_month():
+    """A month that is over and a submitted roster take no pin, and an accepted swap's pin is the swap's to change. A decision
+    under a hold asks the hold whether the month is over, so the roster's change that follows gets the same answer."""
+    over = decision.held.month_over if decision.held else decision.month < membership.this_month()
+    if over:
         return MONTH_OVER
     if decision.roster is not None and decision.roster.state == RosterState.SUBMITTED:
         return FROZEN[RosterState.SUBMITTED]

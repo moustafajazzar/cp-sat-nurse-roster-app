@@ -39,7 +39,9 @@ def take_off_for_leave(nurse: NurseProfile, unit: Unit, days: Iterable[dt.date],
             by_month.setdefault(day.replace(day=1), []).append(day)
     taken = []
     for held in in_force.hold_for_leave(unit.pk, by_month, nurse=hospital_id):
-        row = held.roster.grid.get(hospital_id) if held.approved else None
+        # Asked of the hold, which answers once: a month that ended since the days were sorted keeps its grid, as one already
+        # over does, and the change below is not refused.
+        row = held.roster.grid.get(hospital_id) if held.approved and not held.month_over else None
         off = [(day, row[day.isoformat()]) for day in by_month[held.month] if row and row.get(day.isoformat())]
         if not off:
             continue

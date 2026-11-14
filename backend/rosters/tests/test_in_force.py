@@ -18,6 +18,7 @@ from covers.tests.conftest import opened
 from notifications.models import Event, Notification
 from notifications.tests.test_events import as_user
 from nurses import membership
+from nurses.leave import take_off_for_leave
 from nurses.models import NurseProfile, Placement
 from rosters import in_force
 from rosters.approved import NewCell
@@ -341,6 +342,20 @@ class TestLeave:
         assert in_force_grid(er)["Badr"]["2026-06-09"] == ""
         assert roster_changed_entries() == []
         assert told_of_a_change() == {"Amal", "Badr", "Dana", "Emad"}
+
+    def test_a_month_that_ends_while_leave_is_recorded_keeps_its_grid(self, er, june, monkeypatch):
+        """Midnight of the month's last day falls after leave sorted its days by month and before it takes the shift off."""
+        clock = iter([dt.date(2026, 6, 30)])
+        monkeypatch.setattr(membership, "today", lambda: next(clock, dt.date(2026, 7, 1)))
+        badr = NurseProfile.objects.select_related("user").get(user__username="Badr")
+
+        with transaction.atomic():
+            list(NurseProfile.objects.select_for_update(no_key=True).filter(pk=badr.pk))
+            taken = take_off_for_leave(badr, er, [day(9)], manager())
+
+        assert taken == []
+        assert [version.number for version in versions(june)] == [1]
+        assert in_force_grid(er)["Badr"]["2026-06-09"] != ""
 
     def test_leave_over_two_approved_months_makes_one_version_in_each(self, er, june):
         """Dana works Night on 30 June and on 1 July."""
