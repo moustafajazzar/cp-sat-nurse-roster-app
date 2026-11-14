@@ -232,6 +232,11 @@ class TestTheProposersOwnFacts:
         assert refusals(propose(nurse("Badr"), *SOUND_SWAP)) == [
             "Your accepted request holds your cell on 9 June 2026, so a swap cannot change it."]
 
+    def test_what_their_cell_cannot_hold_is_said_before_their_accepted_request(self, in_force, nurse, mona):
+        _request(mona, in_force)
+
+        assert refusals(propose(nurse("Emad"), cell("Emad", 9, "N"))) == ["N is not one of the shifts you work."]
+
     def test_their_own_expired_required_skill_is_named(self, in_force, nurse, mona):
         """Her skills are hers to read on My month, so the bar on her own cell is said in full."""
         from rosters.tests.test_review import holding

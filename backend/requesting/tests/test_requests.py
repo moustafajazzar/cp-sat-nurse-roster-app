@@ -559,8 +559,31 @@ class TestDeciding:
         assert row_of(mona, er, made["id"])["accept_refusal"] == words
         assert refused(decide(mona, er, made["id"], "accept")) == words
 
+    def test_a_swaps_pin_is_said_before_anything_about_her_day(self, mona, er):
+        opened(mona, er)
+        made = asked(as_user("Amal"), 3)
+        PinnedCell.objects.create(unit=er, nurse=profile("Amal"), date=dt.date(2026, 6, 3), shift=None, origin=PinOrigin.SWAP,
+                                  pinned_by=User.objects.get(username="mona"))
+        NurseProfile.objects.filter(user__username="Amal").update(end_date=dt.date(2026, 6, 2))
+
+        words = "An accepted swap holds this cell on 3 June 2026, so change it there."
+        assert row_of(mona, er, made["id"])["accept_refusal"] == words
+        assert refused(decide(mona, er, made["id"], "accept")) == words
+
+    def test_your_own_pin_is_named_as_replaced_though_the_request_cannot_be_accepted_now(self, mona, er, solver):
+        solved(mona, er, solver)
+        saved(mona, er, pin("Amal", 3, "D"))
+        opened(mona, er)
+        made = asked(as_user("Amal"), 3, "N")
+        NurseProfile.objects.filter(user__username="Amal").update(end_date=dt.date(2026, 6, 2))
+
+        row = row_of(mona, er, made["id"])
+
+        assert row["accept_refusal"] == "3 June 2026 is outside Amal's dates, so there is nothing to pin."
+        assert row["replaces_pin"] == "D"
+
     def test_accepting_is_refused_in_the_words_a_pin_gets(self, mona, er, solver):
-        """Her end date corrected after she asked: `Judge` refuses it as it refuses pinning there."""
+        """Her end date corrected after she asked: `rosters.cells` refuses it as it refuses pinning there."""
         solved(mona, er, solver)
         opened(mona, er)
         made = asked(as_user("Amal"), 21, "N")
