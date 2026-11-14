@@ -1,11 +1,13 @@
 """What a manager reads for each reason a cell cannot hold a change (`rosters.cells`), written once so that an edit, a
 request's decision and a swap never give two accounts of one fact. The manager reads every reason in full, as they read the
-leave and the attributes it rests on. What a nurse reads is each origin's to say, in her own words."""
+leave and the attributes it rests on. What a nurse reads is each origin's to say, in her own words; only the openings that
+name a bar or the pin holding her cell are shared with hers (`bar_said`, `holding`), so the two cannot word one fact apart."""
 from __future__ import annotations
 
 import datetime as dt
 
 from rosters.cells import EDIT, REQUEST, SWAP, Asking, Reason
+from rosters.models import PinOrigin
 from rosters.pins import long_date
 
 
@@ -15,10 +17,15 @@ def bar_said(reason: Reason, whose: str) -> str:
     return f"{whose} {reason.skill}, required to work, counted until {long_date(reason.last)}"
 
 
-def holding(reason: Reason, name: str) -> str:
+def holding(reason: Reason, name: str | None = None) -> str:
     """"Amal's approved swap" or "The cover Amal took": the swap's or the cover's pin that holds `name`'s cell, as a sentence
-    about a request's decision opens."""
-    return {"swap": f"{name}'s approved swap", "cover": f"The cover {name} took"}[reason.origin]
+    about a request's decision opens. With no `name`, "Your approved swap" or "The cover you took", as a sentence to the nurse
+    herself about her own cell opens."""
+    if reason.origin == PinOrigin.SWAP:
+        return f"{name}'s approved swap" if name else "Your approved swap"
+    if reason.origin == PinOrigin.COVER:
+        return f"The cover {name or 'you'} took"
+    raise ValueError(f"No words for a {reason.origin}'s pin holding a cell against a request.")
 
 
 def _held_said(reason: Reason, name: str, day: dt.date, asking: Asking) -> str:

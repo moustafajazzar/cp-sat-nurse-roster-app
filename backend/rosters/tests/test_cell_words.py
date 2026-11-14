@@ -1,10 +1,12 @@
-"""The sentences a manager reads for each reason a cell cannot hold a change, and how a bar's sentence opens for anyone."""
+"""The sentences a manager reads for each reason a cell cannot hold a change, and how a bar's sentence and the pin holding a
+cell open for anyone."""
 import datetime as dt
 
 import pytest
 
-from rosters.cell_words import bar_said, manager_said
+from rosters.cell_words import bar_said, holding, manager_said
 from rosters.cells import EDIT, REQUEST, SWAP, Reason
+from rosters.models import PinOrigin
 
 JUNE = dt.date(2026, 6, 1)
 THE_21ST = dt.date(2026, 6, 21)
@@ -44,6 +46,15 @@ def test_a_requests_pin_sends_the_manager_to_the_request(asking, sentence):
 ])
 def test_a_swaps_or_a_covers_pin_on_a_requests_decision_names_the_way_through(origin, sentence):
     assert manager_said(Reason("held", origin=origin), "Amal Saleh", THE_21ST, JUNE, REQUEST) == sentence
+
+
+@pytest.mark.parametrize("origin, of_her, to_her", [
+    (PinOrigin.SWAP, "Amal's approved swap", "Your approved swap"),
+    (PinOrigin.COVER, "The cover Amal took", "The cover you took"),
+])
+def test_the_pin_holding_a_cell_is_named_the_same_way_to_the_manager_and_to_the_nurse(origin, of_her, to_her):
+    assert holding(Reason("held", origin=origin), "Amal") == of_her
+    assert holding(Reason("held", origin=origin)) == to_her
 
 
 def test_a_bars_sentence_opens_with_whose_skill_it_is_and_its_last_counted_day():

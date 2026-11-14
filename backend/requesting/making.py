@@ -22,10 +22,9 @@ from nurses.models import NurseProfile
 from requesting.models import (LIVE, Preference, PreferenceKind, PreferenceState, Request, RequestState, RequestStep,
                                RequestWindow, Step, WindowState)
 from requesting.windows import catch_up, not_closed, state_today
-from rosters.cell_words import bar_said
+from rosters.cell_words import bar_said, holding
 from rosters.cells import REQUEST, MonthCells
 from rosters.drafts import current_code
-from rosters.models import PinOrigin
 from rosters.pins import long_date
 from units.models import Unit
 
@@ -148,9 +147,8 @@ def held_refusal(cells: MonthCells, nurse: NurseProfile, day: dt.date) -> str | 
     reason = cells.may_change(nurse.user.username, day, REQUEST).reason
     if reason is None:
         return None
-    held = "Your approved swap" if reason.origin == PinOrigin.SWAP else "The cover you took"
-    return (f"{held} holds your cell on {long_date(day)}, so a request that day could not be accepted. Ask your manager if it "
-            "has to change.")
+    return (f"{holding(reason)} holds your cell on {long_date(day)}, so a request that day could not be accepted. Ask your "
+            "manager if it has to change.")
 
 
 def window_for(nurse: NurseProfile, month: dt.date) -> RequestWindow | None:
