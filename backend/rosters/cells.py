@@ -53,10 +53,10 @@ Holds = Shift | str | None
 YIELDS: dict[Asking, set[PinOrigin]] = {
     EDIT: {PinOrigin.MANAGER, PinOrigin.SWAP, PinOrigin.COVER},
     SWAP: {PinOrigin.MANAGER, PinOrigin.SWAP, PinOrigin.COVER},
-    # A cover is not expected to meet a cover's pin: a cover goes only to a nurse off its day on the roster in force, and a
-    # cover's pin put her on a shift that day, which an edit or a swap takes her off only by replacing the pin, and leave only by
-    # ending it. It is answered all the same, as a swap's pin is: a pin set aside reaches no solve, so a re-plan can still move
-    # its cell to a day off, and a cover then puts her on a shift there as a swap would.
+    # A cover never meets a cover's pin: a cover goes only to a nurse off its day on the roster in force, and a cover's pin put
+    # her on a shift that day, which an edit or a swap takes her off only by replacing the pin, and leave only by ending it. Being
+    # off that day is the cover's own rule, checked before it asks here, not this judgement's, so the row still answers every
+    # origin of pin, as a swap's does: a cover puts a nurse on a shift just as a swap does.
     COVER: {PinOrigin.MANAGER, PinOrigin.SWAP, PinOrigin.COVER},
     REQUEST: {PinOrigin.MANAGER, PinOrigin.REQUEST},
 }
@@ -217,8 +217,8 @@ class MonthCells:
     def managers_pin_replaced(self, hospital_id: str, day: dt.date, asking: Asking) -> str | None:
         """What the manager's own pin on this nurse's cell holds (a shift's code, or "" for a day off) when a change of the
         origin asking would replace it, for a page to say before the manager allows that change; None when the change would
-        replace no pin of theirs. A swap's, a cover's and a request's pin are not the manager's to be told of here: each is
-        changed where it was made."""
+        replace no pin of theirs. A swap's, a cover's or a request's pin that the change replaces is not the manager's to be
+        told of."""
         replaced = self.may_change(hospital_id, day, asking).replaces
         return replaced.code if replaced is not None and replaced.origin == PinOrigin.MANAGER else None
 

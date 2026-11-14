@@ -164,8 +164,8 @@ REPLACES, REFUSED = "replaces", "refused"
 YIELDS = {
     EDIT: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REFUSED, PinOrigin.SWAP: REPLACES, PinOrigin.COVER: REPLACES},
     SWAP: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REFUSED, PinOrigin.SWAP: REPLACES, PinOrigin.COVER: REPLACES},
-    # A cover is not expected to meet a cover's pin, which put its nurse on a shift where a cover goes only to one off. It can
-    # once a re-plan moves the cell under a pin set aside to a day off, and is answered as a swap's pin is.
+    # A cover never meets a cover's pin, which put its nurse on a shift where a cover goes only to one off. Being off is the
+    # cover's own rule, not the judgement's, so the judgement still answers it, as for a swap.
     COVER: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REFUSED, PinOrigin.SWAP: REPLACES, PinOrigin.COVER: REPLACES},
     REQUEST: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REPLACES, PinOrigin.SWAP: REFUSED, PinOrigin.COVER: REFUSED},
 }
