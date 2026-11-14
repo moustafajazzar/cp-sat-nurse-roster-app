@@ -15,13 +15,22 @@ def bar_said(reason: Reason, whose: str) -> str:
     return f"{whose} {reason.skill}, required to work, counted until {long_date(reason.last)}"
 
 
+def holding(reason: Reason, name: str) -> str:
+    """"Amal's approved swap" or "The cover Amal took": the swap's or the cover's pin that holds `name`'s cell, as a sentence
+    about a request's decision opens."""
+    return {"swap": f"{name}'s approved swap", "cover": f"The cover {name} took"}[reason.origin]
+
+
 def _held_said(reason: Reason, name: str, day: dt.date, asking: Asking) -> str:
     """A pin that does not yield, said from where the manager stands: on the editor a pin is what they look at, on a request
-    the cell is its own, and on a swap it is one nurse's among several. A cover's refusal is read by its nurse alone."""
+    the cell is its own, and on a swap it is one nurse's among several. A cover's refusal is read by its nurse alone. A request's
+    pin is changed on its own page, where its nurse is told; a swap's or a cover's has no such page, and only the manager's edit
+    replaces it, so that is the way through a request's decision."""
     if asking == EDIT:
         return f"This pin comes from an accepted {reason.origin}, on {long_date(day)}, so change it there."
     if asking == REQUEST:
-        return f"An accepted {reason.origin} holds this cell on {long_date(day)}, so change it there."
+        return (f"{holding(reason, name)} holds this cell on {long_date(day)}. To grant the request, edit the cell first, "
+                f"which replaces the {reason.origin}'s pin, then decide the request.")
     if asking == SWAP:
         return f"An accepted {reason.origin} holds {name}'s cell on {long_date(day)}, so change it there."
     raise ValueError(f"No manager reads why a {asking} cannot change a pinned cell.")

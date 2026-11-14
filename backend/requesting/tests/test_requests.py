@@ -10,7 +10,8 @@ from procrastinate.contrib.django import app
 from accounts.models import Role, User
 from audit.models import AuditEntry
 from conftest import post
-from hospital.models import LeaveType
+from covers.tests.conftest import answered, offered, the_25th
+from hospital.models import LeaveType, Shift
 from notifications.models import Notification
 from notifications.tests.test_events import as_user, told
 from nurses.models import NurseProfile, Placement
@@ -25,10 +26,11 @@ from requesting.tests.conftest import (MONTH, ask, asked, decide, decided, mine,
                                        requests_in, url, windows)
 from rosters.drafts import FROZEN
 from rosters.models import PinEnded, PinnedCell, PinOrigin, RosterState, VersionOrigin
-from rosters.pins import pin_cell
-from rosters.tests.test_pins import grid, input_row, month_of, pin, profile, save, saved, solved
+from rosters.pins import end, pin_cell
+from rosters.tests.test_pins import clear, grid, input_row, month_of, off, pin, profile, save, saved, solved
 from rosters.tests.test_review import approved, roster, submit
 from rosters.tests.test_review import solved as review_solved
+from rosters.tests.test_versions import changed
 from solves.input import assemble
 from solves.tests.conftest import nurse_in
 from units.models import Unit
@@ -456,6 +458,16 @@ class TestWithdrawing:
         assert row_of(mona, er, made["id"])["state"] == "pending"
 
 
+# Why a request's decision is refused on a swap's pin and on a cover's pin holding Night on Amal's 3rd, where she asked for a
+# day off: the way through is the manager's edit.
+HELD = [
+    (PinOrigin.SWAP, "Amal's approved swap holds this cell on 3 June 2026. To grant the request, edit the cell first, which "
+                     "replaces the swap's pin, then decide the request."),
+    (PinOrigin.COVER, "The cover Amal took holds this cell on 3 June 2026. To grant the request, edit the cell first, which "
+                      "replaces the cover's pin, then decide the request."),
+]
+
+
 class TestDeciding:
     def test_accepting_makes_a_pin_of_origin_request_that_reaches_the_solve_and_tells_only_her(self, mona, er, solver):
         opened(mona, er)
@@ -549,26 +561,32 @@ class TestDeciding:
         assert PinnedCell.objects.get(origin=PinOrigin.MANAGER).removed_why == PinEnded.REPLACED
         assert grid(er)["Amal"]["2026-06-03"] == "N"
 
-    def test_accepting_where_an_accepted_swap_holds_the_cell_is_refused(self, mona, er):
+    @pytest.mark.parametrize("origin, words", HELD)
+    def test_accepting_where_a_swaps_or_a_covers_pin_holds_the_cell_is_refused_before_anything_about_her_day(
+            self, mona, er, origin, words):
         opened(mona, er)
         made = asked(as_user("Amal"), 3)
-        PinnedCell.objects.create(unit=er, nurse=profile("Amal"), date=dt.date(2026, 6, 3), shift=None, origin=PinOrigin.SWAP,
-                                  pinned_by=User.objects.get(username="mona"))
-
-        words = "An accepted swap holds this cell on 3 June 2026, so change it there."
-        assert row_of(mona, er, made["id"])["accept_refusal"] == words
-        assert refused(decide(mona, er, made["id"], "accept")) == words
-
-    def test_a_swaps_pin_is_said_before_anything_about_her_day(self, mona, er):
-        opened(mona, er)
-        made = asked(as_user("Amal"), 3)
-        PinnedCell.objects.create(unit=er, nurse=profile("Amal"), date=dt.date(2026, 6, 3), shift=None, origin=PinOrigin.SWAP,
-                                  pinned_by=User.objects.get(username="mona"))
+        PinnedCell.objects.create(unit=er, nurse=profile("Amal"), date=dt.date(2026, 6, 3), shift=Shift.objects.get(code="N"),
+                                  origin=origin, pinned_by=User.objects.get(username="mona"))
         NurseProfile.objects.filter(user__username="Amal").update(end_date=dt.date(2026, 6, 2))
 
-        words = "An accepted swap holds this cell on 3 June 2026, so change it there."
         assert row_of(mona, er, made["id"])["accept_refusal"] == words
         assert refused(decide(mona, er, made["id"], "accept")) == words
+        assert (current_pin("Amal", 3).origin, current_pin("Amal", 3).code) == (origin, "N")
+
+    @pytest.mark.parametrize("origin, words", HELD)
+    def test_changing_what_an_accepted_request_promises_is_refused_the_same_way(self, mona, er, origin, words):
+        """Her request's pin ended while the request stayed accepted, as a transfer can leave it, and the cell then pinned by
+        a swap or a cover."""
+        opened(mona, er)
+        made = asked(as_user("Amal"), 3)
+        decided(mona, er, made["id"], "accept")
+        end([current_pin("Amal", 3)], PinEnded.REPLACED, User.objects.get(username="mona"))
+        PinnedCell.objects.create(unit=er, nurse=profile("Amal"), date=dt.date(2026, 6, 3), shift=Shift.objects.get(code="N"),
+                                  origin=origin, pinned_by=User.objects.get(username="mona"))
+
+        assert refused(decide(mona, er, made["id"], "edit", shift="D", reason="Day instead.")) == words
+        assert (current_pin("Amal", 3).origin, current_pin("Amal", 3).code) == (origin, "N")
 
     def test_your_own_pin_is_named_as_replaced_though_the_request_cannot_be_accepted_now(self, mona, er, solver):
         solved(mona, er, solver)
@@ -804,6 +822,58 @@ class TestAfterApproval:
         response = post(mona, url(er, "/roster/versions"), {"month": MONTH, "edits": [pin("Amal", 3, "D")], "reason": "x"})
 
         assert refused(response, 422) == "This pin comes from an accepted request, on 3 June 2026, so change it there."
+
+
+class TestACoverTakenOnARequestsDate:
+    """In the approved June, with room for two on Day (`covers.tests.conftest.the_25th`), a cover for Day on the 25th, which
+    Emad, off that day, could take. She asked about the 25th before she took it."""
+
+    def took_the_cover(self, mona, er) -> None:
+        cover_id = the_25th(mona, er)
+        offered(mona, er, cover_id, "Emad")
+        answered(as_user("Emad"), cover_id, "accept")
+
+    def test_her_request_stays_pending_and_the_page_says_accepting_it_is_refused_until_the_cell_is_edited(self, mona, carla,
+                                                                                                          er, solver):
+        approved(mona, carla, er, solver)
+        opened(mona, er)
+        made = asked(as_user("Emad"), 25, reason="My son's graduation.")
+        self.took_the_cover(mona, er)
+
+        words = ("The cover Emad took holds this cell on 25 June 2026. To grant the request, edit the cell first, which "
+                 "replaces the cover's pin, then decide the request.")
+        row = row_of(mona, er, made["id"])
+        assert (row["state"], row["accept_refusal"], row["replaces_pin"]) == ("pending", words, None)
+        assert refused(decide(mona, er, made["id"], "accept")) == words
+        assert (current_pin("Emad", 25).origin, current_pin("Emad", 25).code) == (PinOrigin.COVER, "D")
+        assert grid(er)["Emad"]["2026-06-25"] == "D"
+
+        changed(mona, er, off("Emad", 25), reason="Emad asked for the day.")
+        assert row_of(mona, er, made["id"])["accept_refusal"] is None
+        answer = decided(mona, er, made["id"], "accept")
+
+        assert answer["version"] is None, "the edit already took her off"
+        assert (current_pin("Emad", 25).origin, current_pin("Emad", 25).code) == (PinOrigin.REQUEST, "")
+
+    def test_a_request_for_what_the_cover_gave_her_already_is_cleared_through_to_be_its_promise(self, mona, carla, er,
+                                                                                               solver):
+        """An edit asking what the cover's pin holds already changes nothing, so the way through is the clear, which gives
+        the cell back to its solve's day off."""
+        approved(mona, carla, er, solver)
+        opened(mona, er)
+        made = asked(as_user("Emad"), 25, "D")
+        self.took_the_cover(mona, er)
+
+        words = ("The cover Emad took holds this cell on 25 June 2026 with Day (D) already, as the request asks. To make it "
+                 "the request's promise, clear the cell first, then decide the request.")
+        assert row_of(mona, er, made["id"])["accept_refusal"] == words
+        assert refused(decide(mona, er, made["id"], "accept")) == words
+
+        changed(mona, er, clear("Emad", 25), reason="Emad's request instead of the cover.")
+        decided(mona, er, made["id"], "accept")
+
+        assert (current_pin("Emad", 25).origin, current_pin("Emad", 25).code) == (PinOrigin.REQUEST, "D")
+        assert grid(er)["Emad"]["2026-06-25"] == "D"
 
 
 class TestLeaveOverAnAcceptedRequest:

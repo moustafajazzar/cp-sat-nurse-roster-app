@@ -46,7 +46,7 @@ YIELDS: dict[Asking, set[PinOrigin]] = {
     EDIT: {PinOrigin.MANAGER, PinOrigin.SWAP, PinOrigin.COVER},
     SWAP: {PinOrigin.MANAGER, PinOrigin.SWAP, PinOrigin.COVER},
     COVER: {PinOrigin.MANAGER, PinOrigin.SWAP, PinOrigin.COVER},
-    REQUEST: {PinOrigin.MANAGER, PinOrigin.REQUEST, PinOrigin.COVER},
+    REQUEST: {PinOrigin.MANAGER, PinOrigin.REQUEST},
 }
 
 

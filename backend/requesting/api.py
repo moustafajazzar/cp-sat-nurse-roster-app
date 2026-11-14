@@ -156,7 +156,8 @@ def _unit_rows(unit: Unit, requests: list[Request]) -> list[UnitRequestRow]:
         cells, decision = read[row.window.month], deciding.Decision(unit, row.nurse, row, rosters.get(row.window.month))
         pending = row.state == RequestState.PENDING
         aside = cells.set_aside(row.pin) if row.pin else None
-        # Said whether or not it can be accepted now, and only of the manager's own pin: a cover's pin goes unannounced.
+        # Said whether or not it can be accepted now, and only of the manager's own pin: a swap's or a cover's refuses the
+        # acceptance instead, and says so in its refusal.
         replaced = cells.may_change(row.nurse.user.username, row.date, REQUEST).replaces if pending else None
         rows.append(UnitRequestRow(
             id=row.pk, hospital_id=row.nurse.user.username, full_name=row.nurse.user.full_name, date=row.date, shift=row.code,
