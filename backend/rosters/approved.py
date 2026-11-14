@@ -9,9 +9,9 @@ from dataclasses import dataclass
 
 from hospital.models import Shift
 from nurses.models import NurseProfile
+from rosters.cells import MonthCells
 from rosters.drafts import current_code
-from rosters.models import PinnedCell, Roster
-from rosters.pins import Judge
+from rosters.models import Roster
 from rosters.versions import Grid
 from solves.result import headcount_of, shift_day, skill_need_of
 
@@ -33,14 +33,12 @@ class ApprovedMonth:
 
     def __init__(self, roster: Roster):
         self.roster, self.unit, self.month = roster, roster.unit, roster.month
-        self.judge = Judge(self.unit, self.month)
-        self.serving = {nurse.user.username: nurse for nurse in self.judge.nurses.values()}
+        # Whether each cell can hold its change is asked of these, pins and all.
+        self.cells = MonthCells(self.unit, self.month)
         on_grid = NurseProfile.objects.filter(user__username__in=list(roster.grid)).select_related("user")
         self.on_grid = {nurse.user.username: nurse for nurse in on_grid}
         worked = Shift.objects.filter(active=True, code__in=self.unit.rules.get("shifts", []))
         self.shifts = {shift.code: shift for shift in worked}
-        self.pins = {(pin.nurse_id, pin.date): pin for pin in PinnedCell.objects.current().in_month(self.month)
-                     .filter(unit=self.unit).select_related("shift")}
 
     def cell(self, hospital_id: str, day: dt.date) -> str:
         return self.roster.grid.get(hospital_id, {}).get(day.isoformat(), "")

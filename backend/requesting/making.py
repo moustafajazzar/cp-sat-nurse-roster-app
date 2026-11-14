@@ -22,8 +22,10 @@ from nurses.models import NurseProfile
 from requesting.models import (LIVE, Preference, PreferenceKind, PreferenceState, Request, RequestState, RequestStep,
                                RequestWindow, Step, WindowState)
 from requesting.windows import catch_up, not_closed, state_today
+from rosters.cell_words import bar_said
+from rosters.cells import MonthCells
 from rosters.drafts import current_code
-from rosters.pins import Judge, long_date
+from rosters.pins import long_date
 from units.models import Unit
 
 NO_CAP = ("This unit's request cap and preference cap are both 0, so its nurses could make neither requests nor preferences. "
@@ -110,30 +112,30 @@ def locked_nurse(user: User) -> NurseProfile:
     return nurse
 
 
-def nurse_refusal(judge: Judge, nurse: NurseProfile, day: dt.date, asked: str | None,
-                  shift: Shift | None, verb: str = "request") -> tuple[str, str] | None:
-    """`Judge`'s answer, the one a manager's acceptance gets, said to the nurse, with the field it is about: a request that
-    could never be accepted is refused here, and a preference that could count for nothing (`verb` "prefer")."""
-    match judge.day_why(nurse.pk, day):
+def nurse_refusal(cells: MonthCells, nurse: NurseProfile, day: dt.date, asked: str | None,
+                  verb: str = "request") -> tuple[str, str] | None:
+    """Why her cell could not hold `asked`, a shift's code or None for a day off, by the judgement a manager's acceptance
+    gets (`rosters.cells`), said to the nurse with the field it is about: a request that could never be accepted is refused
+    here, and a preference that could count for nothing (`verb` "prefer"). A pin on the cell is not asked about: whether it
+    yields is judged when the request is decided."""
+    reason = cells.cannot_hold(nurse.user.username, day, asked)
+    match reason.why if reason else None:
         case "not_in_month":
-            return "date", f"You have no days on the {judge.unit.name} roster in {month_name(judge.month)}."
+            return "date", f"You have no days on the {cells.unit.name} roster in {month_name(cells.month)}."
         case "outside_dates":
             return "date", f"{long_date(day)} is outside your dates on the roster."
         case "leave":
             return "date", f"You are on leave on {long_date(day)}, so there is nothing to {verb} that day."
-    if asked is None:
-        return None
-    match judge.shift_why(nurse.pk, day, shift) if shift else "shift_not_worked":
         case "shift_not_worked":
-            return "shift", f"{asked} is not one of the {judge.unit.name} unit's shifts."
+            return "shift", f"{asked} is not one of the {cells.unit.name} unit's shifts."
         case "barred":
             # Hers to read in full, as her own skills are on My month; a day off is still hers to ask for.
-            return "shift", (f"{judge.bar_said(nurse.pk, day, 'Your')}, so you can work no shift on {long_date(day)}. "
+            return "shift", (f"{bar_said(reason, 'Your')}, so you can work no shift on {long_date(day)}. "
                              "You can still ask for the day off.")
         case "shift_not_allowed":
             return "shift", f"{asked} is not one of the shifts you work."
         case "night_on_probation":
-            return "shift", (f"You are on probation in {month_name(judge.month)}, so you work no {asked}, the night shift. You "
+            return "shift", (f"You are on probation in {month_name(cells.month)}, so you work no {asked}, the night shift. You "
                              "can still ask for the day off.")
     return None
 
@@ -179,7 +181,7 @@ def make(user: User, day: dt.date, asked: str | None, reason: str, request: Http
         raise HttpError(409, no_requests(unit))
     code = current_code(asked) if asked else None
     shift = Shift.objects.filter(code=code, active=True).first() if code else None
-    refusal = nurse_refusal(Judge(unit, month), nurse, day, code, shift)
+    refusal = nurse_refusal(MonthCells(unit, month), nurse, day, code)
     if refusal:
         refuse(((refusal[0],), refusal[1]))
     live = list(live_in(nurse, month, unit))
@@ -228,7 +230,7 @@ def make_preference(user: User, day: dt.date, kind: PreferenceKind, request: Htt
     unit = Unit.objects.get(pk=window.unit_id)
     if unit.preference_cap == 0:
         raise HttpError(409, no_preferences(unit))
-    refusal = nurse_refusal(Judge(unit, month), nurse, day, None, None, verb="prefer")
+    refusal = nurse_refusal(MonthCells(unit, month), nurse, day, None, verb="prefer")
     if refusal:
         refuse(((refusal[0],), refusal[1]))
     if live_request_on(nurse, day):

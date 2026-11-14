@@ -4,7 +4,7 @@ import datetime as dt
 import pytest
 
 from rosters.cell_words import bar_said, manager_said
-from rosters.cells import Reason
+from rosters.cells import EDIT, REQUEST, SWAP, Reason
 
 JUNE = dt.date(2026, 6, 1)
 THE_21ST = dt.date(2026, 6, 21)
@@ -22,23 +22,23 @@ IN_FULL = [
 ]
 
 
-@pytest.mark.parametrize("asking", ["edit", "request", "swap"])
+@pytest.mark.parametrize("asking", [EDIT, REQUEST, SWAP])
 @pytest.mark.parametrize("reason, sentence", IN_FULL)
 def test_a_reason_reads_the_same_on_an_edit_a_requests_decision_and_a_swap(reason, sentence, asking):
     assert manager_said(reason, "Amal Saleh", THE_21ST, JUNE, asking) == sentence
 
 
 @pytest.mark.parametrize("asking, sentence", [
-    ("edit", "This pin comes from an accepted request, on 21 June 2026, so change it there."),
-    ("request", "An accepted request holds this cell on 21 June 2026, so change it there."),
-    ("swap", "An accepted request holds Amal Saleh's cell on 21 June 2026, so change it there."),
+    (EDIT, "This pin comes from an accepted request, on 21 June 2026, so change it there."),
+    (REQUEST, "An accepted request holds this cell on 21 June 2026, so change it there."),
+    (SWAP, "An accepted request holds Amal Saleh's cell on 21 June 2026, so change it there."),
 ])
 def test_a_pin_that_does_not_yield_is_said_as_each_origin_has_said_it(asking, sentence):
     assert manager_said(Reason("held", origin="request"), "Amal Saleh", THE_21ST, JUNE, asking) == sentence
 
 
 def test_the_pin_is_named_by_its_origin():
-    assert manager_said(Reason("held", origin="swap"), "Amal Saleh", THE_21ST, JUNE, "request") == (
+    assert manager_said(Reason("held", origin="swap"), "Amal Saleh", THE_21ST, JUNE, REQUEST) == (
         "An accepted swap holds this cell on 21 June 2026, so change it there.")
 
 

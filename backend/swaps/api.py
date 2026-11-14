@@ -14,7 +14,8 @@ from ninja import Field, Query, Router, Schema
 
 from hospital.api import StrictSchema, refuse
 from rosters.api import GridCheck, _grid_check
-from rosters.models import PinnedCell, PinOrigin, Roster
+from rosters.cells import SWAP, MonthCells
+from rosters.models import PinOrigin, Roster
 from rosters.review import name_of
 from solves.api import MonthFilter, chosen_month, manager
 from swaps import steps
@@ -89,6 +90,13 @@ class SwapDecision(Schema):
     approve_refusal: str | None
 
 
+def _managers_pin_replaced(month: MonthCells, cell: SwapCellRow) -> str | None:
+    """What the manager's own pin on this cell holds, when the swap would replace one: the page says so before they approve.
+    A swap replaces a swap's and a cover's pin too, which are not the manager's to be told of."""
+    replaced = month.may_change(cell.hospital_id, cell.date, SWAP).replaces
+    return replaced.code if replaced is not None and replaced.origin == PinOrigin.MANAGER else None
+
+
 def _decision(request: HttpRequest, unit_id: UUID, swap_id: UUID) -> SwapDecision:
     unit = unit_in_scope(request.user, unit_id)
     swap = with_rows(Swap.objects.filter(pk=swap_id, unit=unit).select_related("made_version")).first()
@@ -96,11 +104,10 @@ def _decision(request: HttpRequest, unit_id: UUID, swap_id: UUID) -> SwapDecisio
         raise Http404("There is no such swap in your unit.")
     roster = Roster.objects.select_related("unit").get(pk=swap.roster_id)
     # Only while it may still be approved: once it has ended, no approval will replace anything.
-    pins = {(pin.nurse_id, pin.date): pin for pin in PinnedCell.objects.current().filter(
-        unit=unit, origin=PinOrigin.MANAGER, nurse__in=[cell.nurse_id for cell in swap.cells.all()])} if swap.waiting else {}
+    month = MonthCells(unit, roster.month) if swap.waiting else None
     cells = [DecisionCell(**row.dict(), now=roster.grid.get(row.hospital_id, {}).get(row.date.isoformat(), ""),
-                          replaces_pin=pins[(cell.nurse_id, cell.date)].code if (cell.nurse_id, cell.date) in pins else None)
-             for row, cell in zip(swap_cells(swap), swap.cells.all())]
+                          replaces_pin=_managers_pin_replaced(month, row) if month else None)
+             for row in swap_cells(swap)]
     answer = SwapDecision(swap=unit_row(swap), cells=cells, check=None, cost_before=None, cost_after=None, delta=None,
                           problems=[], approve_refusal=None)
     state = state_now(swap)

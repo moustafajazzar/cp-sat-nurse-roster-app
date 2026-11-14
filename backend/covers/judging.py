@@ -34,8 +34,10 @@ from nurse_roster.request import load_request
 from accounts.models import Role
 from hospital.models import Shift
 from rosters.approved import ApprovedMonth, NewCell, newly_broken, with_pins
+from rosters.cell_words import bar_said
+from rosters.cells import COVER
 from rosters.editing import Checked, accounted, scored
-from rosters.models import PinOrigin, Roster
+from rosters.models import Roster
 from rosters.pins import long_date
 from solves.input import assemble
 from solves.result import headcount_of, shift_day
@@ -106,20 +108,20 @@ class CoverMonth(ApprovedMonth):
             return "not_staff"
         if self.cell(hospital_id, self.day):
             return "works"
-        serving = self.serving.get(hospital_id)
-        why = self.judge.day_why(serving.pk, self.day) if serving else "not_in_month"
-        if why is not None:
-            return why
-        if serving.pk in self.judge.on_probation:
+        # Whether she is there that day at all is asked first, as of a day off, so that a nurse on probation who is also on
+        # leave reads of her leave.
+        absent = self.cells.cannot_hold(hospital_id, self.day, None)
+        if absent is not None:
+            return absent.why
+        if hospital_id in self.cells.on_probation:
             return "on_probation"  # She fills no gap: a shift is fully staffed without her.
-        why = self.judge.shift_why(serving.pk, self.day, self.shift)
-        if why is not None:
-            # The cover's own shift is one the unit works, so anything but the bar is her allowed shifts.
-            return "barred" if why == "barred" else "shift_not_allowed"
-        pin = self.pins.get((nurse.pk, self.day))
-        if pin is not None and pin.origin == PinOrigin.REQUEST:
-            return "request"
-        return None
+        reason = self.cells.may_hold(hospital_id, self.day, COVER, self.shift).reason
+        if reason is None:
+            return None
+        if reason.why == "held":
+            return reason.origin  # A request's: the one pin that does not yield to a cover.
+        # The cover's own shift is one the unit works, so anything but the bar is her allowed shifts.
+        return "barred" if reason.why == "barred" else "shift_not_allowed"
 
     def refusal_for(self, hospital_id: str) -> list[str]:
         """Why she cannot take it now, in her own words: nothing when she can."""
@@ -130,7 +132,8 @@ class CoverMonth(ApprovedMonth):
             what = f"{held.display_name} ({held.code})" if held else self.cell(hospital_id, self.day)
             return [f"You already work {what} on {on}, so you cannot take this cover."]
         if why == "barred":
-            return [f"{self.judge.bar_said(self.serving[hospital_id].pk, self.day, 'Your')}, so you cannot take this cover."]
+            bar = self.cells.cannot_hold(hospital_id, self.day, self.shift)
+            return [f"{bar_said(bar, 'Your')}, so you cannot take this cover."]
         if why is not None:
             return [{
                 "not_on_grid": f"You have no row on the {self.unit.name} roster for {self.month:%B %Y}, so you cannot take "
@@ -213,11 +216,11 @@ def judge(roster: Roster, day: dt.date, shift: Shift) -> CoverJudged:
         if broken or hospital_id not in figures:
             continue
         nurse, row = month.on_grid[hospital_id], figures[hospital_id]
-        pin = month.pins.get((nurse.pk, day))
+        replaced = month.cells.may_change(hospital_id, day, COVER).replaces
         judged.nurses.append(CouldTake(
             hospital_id=hospital_id, name=nurse.user.full_name or hospital_id, worked=row["hours_worked"],
             owed=row["required"] if counted else None, overtime_this_year=row["carry_over"]["ytd_overtime"],
             makes_whole=not _on(after.violations, day, shift.code),
-            replaces=pin.origin if pin is not None else None))
+            replaces=replaced.origin if replaced is not None else None))
     judged.nurses.sort(key=lambda could: (could.balance, could.overtime_this_year, could.name.casefold(), could.hospital_id))
     return judged

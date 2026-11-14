@@ -68,9 +68,9 @@ def _preferred(unit: Unit, month: dt.date) -> dict[str, dict[str, list[str]]]:
 
 def assemble(unit: Unit, month: dt.date, *, time_limit: int = 1, chain=None, facts: bool = False) -> Assembled:
     """`time_limit` matters only to an input that will be sent. A pin joins its nurse's block only if it counts: leave wins
-    over one, as the solver refuses a shift pinned on a leave date, and `rosters.pins` sets aside that pair and every other a
-    row can come to hold, so that none reaches the solver as a failed solve. `facts` is a close's, of a month that is over
-    (`rosters.pins.month_pins`).
+    over one, as the solver refuses a shift pinned on a leave date, and that pair and every other a row can come to hold is
+    set aside (`rosters.cells`), so that none reaches the solver as a failed solve. `facts` is a close's, of a month that is
+    over (`rosters.pins.month_pins`).
 
     Each nurse starts from her carry-over (`closes.chain`): the latest closed month's, projected forward through the approved
     rosters in between, or her opening values. `chain` is the reading to share, a close's among them, which takes no projection.

@@ -21,17 +21,32 @@ from rosters.models import PinnedCell, PinOrigin
 from solves.input import barred_from
 from units.models import Unit
 
-Why = Literal["not_in_month", "outside_dates", "leave", "shift_not_worked", "barred", "shift_not_allowed", "night_on_probation",
-              "held"]
+# Why a cell could not hold what is asked whatever pin is on it, and so why a saved pin is set aside. The API's schema lists
+# them in this order, which is not the order they are judged in (`MonthCells.cannot_hold`).
+AsideWhy = Literal["not_in_month", "outside_dates", "leave", "shift_not_worked", "shift_not_allowed", "barred", "night_on_probation"]
+# Those, and a pin on the cell that does not yield to the origin asking.
+Why = Literal[AsideWhy, "held"]
+
+# The origins that ask a cell to change, named as a version's origin is (`rosters.in_force.Origin`). A request asks when it
+# is decided: accepted, or what it promises changed.
+Asking = Literal["edit", "swap", "cover", "request"]
+EDIT: Asking = "edit"
+SWAP: Asking = "swap"
+COVER: Asking = "cover"
+REQUEST: Asking = "request"
+
+# What a cell is asked to hold: a shift, by a code as someone wrote it or as the row a pin or a cover holds, or nothing for a
+# day off.
+Holds = Shift | str | None
 
 # Which pin yields to which change: {the origin asking: the origins of the pins it replaces}. A pin of any other origin holds its
 # cell against that change, set aside or not, since a pin set aside is not ended and may count again. Leave asks nothing here:
 # it ends every pin on its days.
-YIELDS = {
-    "edit": {PinOrigin.MANAGER},
-    "swap": {PinOrigin.MANAGER, PinOrigin.SWAP, PinOrigin.COVER},
-    "cover": {PinOrigin.MANAGER, PinOrigin.SWAP, PinOrigin.COVER},
-    "request": {PinOrigin.MANAGER, PinOrigin.REQUEST, PinOrigin.COVER},
+YIELDS: dict[Asking, set[PinOrigin]] = {
+    EDIT: {PinOrigin.MANAGER},
+    SWAP: {PinOrigin.MANAGER, PinOrigin.SWAP, PinOrigin.COVER},
+    COVER: {PinOrigin.MANAGER, PinOrigin.SWAP, PinOrigin.COVER},
+    REQUEST: {PinOrigin.MANAGER, PinOrigin.REQUEST, PinOrigin.COVER},
 }
 
 
@@ -78,34 +93,28 @@ class MonthCells:
                              if probation.on_probation_in(nurse, month)}
         self._night_shift = unit.rules.get("night_shift")
         pins = PinnedCell.objects.current().in_month(month).filter(unit=unit).select_related("shift", "nurse__user")
-        # One left behind by a nurse transferred out is among them: it is this unit's still, and holds its cell here.
-        self._pins = {(pin.nurse.user.username, pin.date): pin for pin in pins}
+        # The unit's pins of the month by nurse and date, for a listing of them. One left behind by a nurse transferred out is
+        # among them: it is this unit's still, and holds its cell here.
+        self.pins = list(pins.order_by("nurse__user__username", "date"))
+        self._pins = {(pin.nurse.user.username, pin.date): pin for pin in self.pins}
 
     def shift(self, code: str) -> Shift | None:
         """The shift this code names among those the unit works, an older code of it included; None for any other."""
         return self._worked.get(current_code(code))
 
-    def cannot_hold(self, hospital_id: str, day: dt.date, holds: str | None) -> Reason | None:
-        """Why this nurse's cell could not hold `holds`, a shift's code or None for a day off, whatever pin is on it; None when
-        it could. A day off is always hers on a day she holds anything, a barred day's too."""
-        nurse = self.nurses.get(hospital_id)
-        reason = self._day(nurse, day)
-        if reason or not holds:
-            return reason
-        return self._shift(nurse, day, holds, self.shift(holds))
+    def cannot_hold(self, hospital_id: str, day: dt.date, holds: Holds) -> Reason | None:
+        """Why this nurse's cell could not hold `holds` whatever pin is on it; None when it could. A day off is always hers on
+        a day she holds anything, a barred day's too."""
+        return self._cannot_hold(self.nurses.get(hospital_id), day, holds)
 
     def set_aside(self, pin: PinnedCell, *, over: bool = False) -> Reason | None:
         """Why this saved pin of the unit's month counts for nothing now: its cell could not hold it, by the judgement a new
         pin there gets with precedence left out. None for a pin that counts. `over` for a month that is over, which its close
         makes fact: the reasons about the day still set a pin aside, but one to a shift the unit has stopped working, or she may
         no longer work, was worked when it was set, and counts."""
-        nurse = self._by_pk.get(pin.nurse_id)
-        reason = self._day(nurse, pin.date)
-        if reason or over or pin.shift is None:
-            return reason
-        return self._shift(nurse, pin.date, pin.shift.code, self._worked.get(pin.shift.code))
+        return self._cannot_hold(self._by_pk.get(pin.nurse_id), pin.date, None if over else pin.shift)
 
-    def may_change(self, hospital_id: str, day: dt.date, asking: str) -> Answer:
+    def may_change(self, hospital_id: str, day: dt.date, asking: Asking) -> Answer:
         """Whether the origin asking (an edit, a swap, a cover or a request, as `rosters.in_force.Origin` names them) may change
         this nurse's cell at all, whatever it would then hold: it may when no pin is on it, and when the pin on it yields to that
         origin, which the change then replaces. All a clear is asked, since ending a pin can break nothing."""
@@ -116,23 +125,24 @@ class MonthCells:
             return Answer(replaces=pin)
         return Answer(reason=Reason("held", origin=pin.origin))
 
-    def may_hold(self, hospital_id: str, day: dt.date, asking: str, holds: str | None) -> Answer:
-        """Whether this nurse's cell may hold `holds`, a shift's code or None for a day off, for the origin asking. What the
-        cell cannot hold is said before a pin that does not yield."""
+    def may_hold(self, hospital_id: str, day: dt.date, asking: Asking, holds: Holds) -> Answer:
+        """Whether this nurse's cell may hold `holds` for the origin asking. What the cell cannot hold is said before a pin
+        that does not yield."""
         reason = self.cannot_hold(hospital_id, day, holds)
         return Answer(reason=reason) if reason else self.may_change(hospital_id, day, asking)
 
-    def _day(self, nurse: NurseProfile | None, day: dt.date) -> Reason | None:
-        """Why she holds nothing that day, a day off included."""
+    def _cannot_hold(self, nurse: NurseProfile | None, day: dt.date, holds: Holds) -> Reason | None:
+        """The reasons in their one order: those about the day, which stop a day off too, then those about the shift."""
         if nurse is None:
             return Reason("not_in_month")
         if membership.outside_dates(nurse, day):
             return Reason("outside_dates")
-        return Reason("leave") if (nurse.pk, day) in self._leave else None
-
-    def _shift(self, nurse: NurseProfile, day: dt.date, asked: str, shift: Shift | None) -> Reason | None:
-        """Why she could not work this shift on a day she is there. `shift` is None for one the unit does not work, which
-        `asked` names as whoever asked wrote it."""
+        if (nurse.pk, day) in self._leave:
+            return Reason("leave")
+        if not holds:
+            return None
+        # A row is the unit's when the unit works its code now; a code is followed from any older one first.
+        asked, shift = (holds.code, self._worked.get(holds.code)) if isinstance(holds, Shift) else (holds, self.shift(holds))
         if shift is None:
             return Reason("shift_not_worked", shift=asked)
         bar = self._bars.get(nurse.pk)

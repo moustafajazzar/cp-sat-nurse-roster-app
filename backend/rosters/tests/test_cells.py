@@ -10,8 +10,7 @@ from accounts.models import User
 from hospital.models import LeaveType, Shift, ShiftRename
 from nurses.models import Leave, NurseProfile, Placement
 from nurses.tests.conftest import make_unit
-from rosters.cells import Answer, MonthCells, Reason
-from rosters.in_force import Origin
+from rosters.cells import COVER, EDIT, REQUEST, SWAP, Answer, MonthCells, Reason
 from rosters.models import PinEnded, PinnedCell, PinOrigin, Roster, RosterState
 from rosters.pins import end
 from rosters.tests.conftest import approved_roster
@@ -44,8 +43,8 @@ def manager() -> User:
 def test_a_cell_nothing_stands_on_may_hold_a_shift_or_a_day_off(er):
     cells = MonthCells(er, JUNE)
 
-    assert cells.may_hold("Amal", day(3), Origin.EDIT, "N") == Answer()
-    assert cells.may_hold("Amal", day(3), Origin.EDIT, None) == Answer()
+    assert cells.may_hold("Amal", day(3), EDIT, "N") == Answer()
+    assert cells.may_hold("Amal", day(3), EDIT, None) == Answer()
 
 
 @pytest.mark.parametrize("state", [None, RosterState.DRAFT, RosterState.APPROVED])
@@ -57,9 +56,9 @@ def test_the_answers_are_the_same_with_no_roster_a_draft_and_a_roster_in_force(e
 
     cells = MonthCells(er, JUNE)
 
-    assert cells.may_hold("Amal", day(3), Origin.EDIT, "D") == Answer(reason=Reason("held", origin="request"))
-    assert cells.may_hold("Emad", day(4), Origin.SWAP, "N") == Answer(reason=Reason("shift_not_allowed", shift="N"))
-    assert cells.may_hold("Badr", day(4), Origin.COVER, "N") == Answer()
+    assert cells.may_hold("Amal", day(3), EDIT, "D") == Answer(reason=Reason("held", origin="request"))
+    assert cells.may_hold("Emad", day(4), SWAP, "N") == Answer(reason=Reason("shift_not_allowed", shift="N"))
+    assert cells.may_hold("Badr", day(4), COVER, "N") == Answer()
 
 
 class TestEachReason:
@@ -87,6 +86,7 @@ class TestEachReason:
         cells = MonthCells(er, JUNE)
 
         assert cells.cannot_hold("Amal", day(3), None) == Reason("leave")
+        assert cells.cannot_hold("Amal", day(3), "N") == Reason("leave")
         assert cells.cannot_hold("Amal", day(4), None) is None
 
     def test_a_shift_the_unit_does_not_work_named_as_it_was_asked(self, er):
@@ -107,6 +107,13 @@ class TestEachReason:
 
         assert cells.cannot_hold("Amal", day(3), "NT") is None
         assert cells.cannot_hold("Emad", day(3), "NT") == Reason("shift_not_allowed", shift="N")
+
+    def test_a_shift_asked_as_the_row_a_cover_or_a_request_holds_is_judged_as_its_code_is(self, er):
+        cells = MonthCells(er, JUNE)
+
+        assert cells.cannot_hold("Amal", day(3), Shift.objects.get(code="N")) is None
+        assert cells.cannot_hold("Emad", day(3), Shift.objects.get(code="N")) == Reason("shift_not_allowed", shift="N")
+        assert cells.cannot_hold("Amal", day(3), Shift.objects.get(code="A")) == Reason("shift_not_worked", shift="A")
 
     def test_a_bar_with_its_skill_and_its_last_counted_day(self, er):
         holding("Amal", "BLS", day(15), required=True)
@@ -140,7 +147,7 @@ class TestEachReason:
     def test_a_pin_that_does_not_yield_with_its_origin(self, er):
         pinned(er, "Amal", 3, "N", PinOrigin.REQUEST)
 
-        assert MonthCells(er, JUNE).may_hold("Amal", day(3), Origin.EDIT, "D") == Answer(reason=Reason("held", origin="request"))
+        assert MonthCells(er, JUNE).may_hold("Amal", day(3), EDIT, "D") == Answer(reason=Reason("held", origin="request"))
 
 
 def pinned(unit, hospital_id: str, number: int, code: str, origin: PinOrigin) -> PinnedCell:
@@ -153,10 +160,10 @@ def pinned(unit, hospital_id: str, number: int, code: str, origin: PinOrigin) ->
 REPLACES, REFUSED = "replaces", "refused"
 # Which pin yields to which change as the app stands: {the origin asking: {the pin's origin: what becomes of the pin}}.
 YIELDS = {
-    Origin.EDIT: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REFUSED, PinOrigin.SWAP: REFUSED, PinOrigin.COVER: REFUSED},
-    Origin.SWAP: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REFUSED, PinOrigin.SWAP: REPLACES, PinOrigin.COVER: REPLACES},
-    Origin.COVER: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REFUSED, PinOrigin.SWAP: REPLACES, PinOrigin.COVER: REPLACES},
-    Origin.REQUEST: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REPLACES, PinOrigin.SWAP: REFUSED, PinOrigin.COVER: REPLACES},
+    EDIT: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REFUSED, PinOrigin.SWAP: REFUSED, PinOrigin.COVER: REFUSED},
+    SWAP: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REFUSED, PinOrigin.SWAP: REPLACES, PinOrigin.COVER: REPLACES},
+    COVER: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REFUSED, PinOrigin.SWAP: REPLACES, PinOrigin.COVER: REPLACES},
+    REQUEST: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REPLACES, PinOrigin.SWAP: REFUSED, PinOrigin.COVER: REPLACES},
 }
 PAIRINGS = [(asking, origin, outcome) for asking, row in YIELDS.items() for origin, outcome in row.items()]
 
@@ -190,19 +197,19 @@ class TestWhichPinYields:
     def test_a_pin_replaced_is_named_with_its_origin_and_what_it_holds(self, er):
         pinned(er, "Amal", 3, "N", PinOrigin.MANAGER)
 
-        replaced = MonthCells(er, JUNE).may_hold("Amal", day(3), Origin.SWAP, None).replaces
+        replaced = MonthCells(er, JUNE).may_hold("Amal", day(3), SWAP, None).replaces
 
         assert (replaced.origin, replaced.code) == ("manager", "N")
 
     def test_a_cell_with_no_pin_may_change(self, er):
-        assert MonthCells(er, JUNE).may_change("Amal", day(3), Origin.EDIT) == Answer()
+        assert MonthCells(er, JUNE).may_change("Amal", day(3), EDIT) == Answer()
 
     def test_a_pin_ended_or_on_another_day_holds_nothing(self, er):
         pinned(er, "Amal", 4, "N", PinOrigin.REQUEST)
         ended = pinned(er, "Amal", 3, "N", PinOrigin.REQUEST)
         end([ended], PinEnded.CLEARED, manager())
 
-        assert MonthCells(er, JUNE).may_hold("Amal", day(3), Origin.EDIT, "D") == Answer()
+        assert MonthCells(er, JUNE).may_hold("Amal", day(3), EDIT, "D") == Answer()
 
     def test_whether_the_change_may_be_made_at_all_asks_nothing_of_the_day_or_the_shift(self, er):
         """All a clear is asked: ending a pin can break nothing."""
@@ -211,8 +218,8 @@ class TestWhichPinYields:
 
         cells = MonthCells(er, JUNE)
 
-        assert cells.may_change("Amal", day(3), Origin.EDIT) == Answer(replaces=pin)
-        assert cells.may_hold("Amal", day(3), Origin.EDIT, "D") == Answer(reason=Reason("outside_dates"))
+        assert cells.may_change("Amal", day(3), EDIT) == Answer(replaces=pin)
+        assert cells.may_hold("Amal", day(3), EDIT, "D") == Answer(reason=Reason("outside_dates"))
 
 
 def left_for_another_unit(er, make_user) -> None:
@@ -258,6 +265,15 @@ class TestSetAside:
         pin = pinned(er, "Amal", 20, "N", PinOrigin.MANAGER)
 
         assert MonthCells(er, JUNE).set_aside(pin) is None
+
+    def test_the_months_pins_are_listed_by_nurse_and_date_without_those_ended_or_another_units(self, er, make_user):
+        first, second = pinned(er, "Badr", 4, "N", PinOrigin.SWAP), pinned(er, "Amal", 20, "", PinOrigin.MANAGER)
+        third = pinned(er, "Amal", 3, "N", PinOrigin.REQUEST)
+        end([pinned(er, "Dana", 3, "N", PinOrigin.MANAGER)], PinEnded.CLEARED, manager())
+        icu = make_unit("ICU")
+        pinned(icu, nurse_in(icu, make_user, "Faris").user.username, 3, "", PinOrigin.MANAGER)
+
+        assert MonthCells(er, JUNE).pins == [third, second, first]
 
     @pytest.mark.parametrize("comes_to_be, reason", ABOUT_THE_DAY + ABOUT_THE_SHIFT)
     def test_a_saved_pin_is_set_aside_for_the_reason_a_new_pin_on_its_cell_would_be_refused(self, er, make_user, comes_to_be,
@@ -320,5 +336,5 @@ class TestTheirOrder:
 
         cells = MonthCells(er, JUNE)
 
-        assert cells.may_hold("Emad", day(3), Origin.SWAP, "N") == Answer(reason=Reason("shift_not_allowed", shift="N"))
-        assert cells.may_hold("Emad", day(3), Origin.SWAP, None) == Answer(reason=Reason("held", origin="request"))
+        assert cells.may_hold("Emad", day(3), SWAP, "N") == Answer(reason=Reason("shift_not_allowed", shift="N"))
+        assert cells.may_hold("Emad", day(3), SWAP, None) == Answer(reason=Reason("held", origin="request"))

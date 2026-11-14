@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from rosters.cells import Reason
+from rosters.cells import EDIT, REQUEST, SWAP, Asking, Reason
 from rosters.pins import long_date
 
 
@@ -15,20 +15,19 @@ def bar_said(reason: Reason, whose: str) -> str:
     return f"{whose} {reason.skill}, required to work, counted until {long_date(reason.last)}"
 
 
-def _held_said(reason: Reason, name: str, day: dt.date, asking: str) -> str:
+def _held_said(reason: Reason, name: str, day: dt.date, asking: Asking) -> str:
     """A pin that does not yield, said from where the manager stands: on the editor a pin is what they look at, on a request
     the cell is its own, and on a swap it is one nurse's among several. A cover's refusal is read by its nurse alone."""
-    match asking:
-        case "edit":
-            return f"This pin comes from an accepted {reason.origin}, on {long_date(day)}, so change it there."
-        case "request":
-            return f"An accepted {reason.origin} holds this cell on {long_date(day)}, so change it there."
-        case "swap":
-            return f"An accepted {reason.origin} holds {name}'s cell on {long_date(day)}, so change it there."
+    if asking == EDIT:
+        return f"This pin comes from an accepted {reason.origin}, on {long_date(day)}, so change it there."
+    if asking == REQUEST:
+        return f"An accepted {reason.origin} holds this cell on {long_date(day)}, so change it there."
+    if asking == SWAP:
+        return f"An accepted {reason.origin} holds {name}'s cell on {long_date(day)}, so change it there."
     raise ValueError(f"No manager reads why a {asking} cannot change a pinned cell.")
 
 
-def manager_said(reason: Reason, name: str, day: dt.date, month: dt.date, asking: str) -> str:
+def manager_said(reason: Reason, name: str, day: dt.date, month: dt.date, asking: Asking) -> str:
     """Why `name`'s cell on `day` of the unit's `month` cannot hold what the origin `asking` asked, in full."""
     match reason.why:
         case "not_in_month":

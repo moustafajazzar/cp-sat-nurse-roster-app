@@ -1,6 +1,6 @@
 """The unit manager's decisions on a request: accept, reject, edit and cancel an accepted one, and leave replacing one. An
-accepted request is a pinned cell of origin `request`, refused where a pin would be, in the same words
-(`rosters.pins.Judge`), and put on the roster as a pin is: on a draft's cell at once, since a draft never disagrees with a pin, and
+accepted request is a pinned cell of origin `request`, refused where a pin would be, in the same words (`rosters.cells`,
+`rosters.cell_words`), and put on the roster as a pin is: on a draft's cell at once, since a draft never disagrees with a pin, and
 on the roster in force of a month not over as a change of origin `request` (`rosters.in_force`), when it alters the cell. The pin
 is the request's own, made whether or not the cell changes. A submitted roster is frozen, so a decision
 that would move a pin waits for its decision. Call each inside a transaction under `locked_for_decision`."""
@@ -25,9 +25,11 @@ from nurses.models import NurseProfile
 from requesting.models import Request, RequestState, RequestStep, Step, what_of
 from rosters import in_force
 from rosters.approved import NewCell
+from rosters.cell_words import manager_said
+from rosters.cells import REQUEST, Holds, MonthCells
 from rosters.drafts import FROZEN, current_code
 from rosters.models import PinEnded, PinnedCell, PinOrigin, Roster, RosterState, RosterVersion
-from rosters.pins import Judge, end, long_date, pin_cell
+from rosters.pins import end, long_date, pin_cell
 from units.models import Unit
 from units.scope import unit_in_scope
 
@@ -78,8 +80,8 @@ def locked_for_decision(user: User, unit_id: UUID, request_id: UUID) -> Decision
 
 
 def why_the_pin_cannot_move(decision: Decision) -> str | None:
-    """A month that is over and a submitted roster take no pin, and an accepted swap's pin is the swap's to change. A decision
-    under a hold asks the hold whether the month is over, so the roster's change that follows gets the same answer."""
+    """A month that is over and a submitted roster take no pin. A decision under a hold asks the hold whether the month is
+    over, so the roster's change that follows gets the same answer."""
     over = decision.held.month_over if decision.held else decision.month < membership.this_month()
     if over:
         return MONTH_OVER
@@ -88,16 +90,17 @@ def why_the_pin_cannot_move(decision: Decision) -> str | None:
     return None
 
 
-def refusal_to_pin(decision: Decision, shift: Shift | None, asked: str | None, judge: Judge | None = None) -> str | None:
-    """Why the request's date could not hold this pin now, in a save's words; None when it could."""
+def refusal_to_pin(decision: Decision, holds: Holds, cells: MonthCells | None = None) -> str | None:
+    """Why the request's date could not hold this pin now, in a save's words; None when it could. `holds` is what the pin
+    would hold. A pin there that does not yield to a request's decision is said before anything about the day or the shift,
+    since nothing asked of the request could then be granted. `cells` is the month already read, for a page of requests."""
     moving = why_the_pin_cannot_move(decision)
     if moving:
         return moving
-    held = PinnedCell.objects.current().filter(nurse=decision.nurse, date=decision.request.date, unit=decision.unit).first()
-    if held is not None and held.origin == PinOrigin.SWAP:
-        return f"An accepted swap holds this cell on {long_date(decision.request.date)}, so change it there."
-    judge = judge or Judge(decision.unit, decision.month)
-    return judge.refusal(decision.nurse.pk, decision.name, decision.request.date, asked, shift)
+    cells = cells or MonthCells(decision.unit, decision.month)
+    hospital_id, day = decision.nurse.user.username, decision.request.date
+    reason = cells.may_change(hospital_id, day, REQUEST).reason or cells.cannot_hold(hospital_id, day, holds)
+    return manager_said(reason, decision.name, day, decision.month, REQUEST) if reason else None
 
 
 def _onto_roster(decision: Decision, shift: Shift | None, by: User, reason: str, request: HttpRequest) -> RosterVersion | None:
@@ -152,7 +155,7 @@ def accept(decision: Decision, by: User, reason: str, request: HttpRequest) -> R
     nurse_request = decision.request
     if nurse_request.state != RequestState.PENDING:
         raise HttpError(409, f"This request is {nurse_request.state_words} already.")
-    refusal = refusal_to_pin(decision, nurse_request.shift, nurse_request.shift.code if nurse_request.shift else None)
+    refusal = refusal_to_pin(decision, nurse_request.shift)
     if refusal:
         raise HttpError(409, refusal)
     what = nurse_request.what
@@ -170,7 +173,7 @@ def edit(decision: Decision, asked: str | None, by: User, reason: str, request: 
     shift = Shift.objects.filter(code=code, active=True).first() if code else None
     if (code is None and nurse_request.pin.shift_id is None) or (shift is not None and shift.pk == nurse_request.pin.shift_id):
         raise HttpError(409, f"The request already promises {what_of(shift)}. Choose something else, or leave it as it is.")
-    refusal = refusal_to_pin(decision, shift, code)
+    refusal = refusal_to_pin(decision, code)
     if refusal:
         raise HttpError(409, refusal)
     return _pin_and_tell(decision, shift, Step.EDITED, by, reason, f"{decision.name}'s accepted request changed to "

@@ -24,11 +24,12 @@ from nurses import membership
 from nurses.api import MonthText
 from rosters import in_force, review
 from rosters.approved import NewCell
+from rosters.cells import AsideWhy
 from rosters.drafts import FROZEN, MONTH_OVER, in_current_codes
 from rosters.editing import Checked, DraftEdits, Edit, check_saved, scored, with_edits
 from rosters.grids import GridView, full_names, grid_view
 from rosters.models import Roster, RosterState, RosterVersion
-from rosters.pins import AsideWhy, lost_to_leave, month_pins
+from rosters.pins import lost_to_leave, month_pins
 from rosters.versions import cells_changed, differences
 from solves.api import MonthFilter, SolveProgress, chosen_month, manager, progress_of
 from solves.input import Assembled, assemble, changes_since
@@ -249,7 +250,8 @@ def _draft(roster: Roster, changes: list[dict], checked: Checked | None, user: U
                  edited=edited, cost=check.cost if check else solve.result["cost"], solved_cost=solve.result["cost"], check=check,
                  stopped_early=solve.state == SolveState.CANCELLED,
                  pins=[DraftPin(hospital_id=pin.nurse.user.username, full_name=pin.nurse.user.full_name, date=pin.date,
-                                shift=pin.code, origin=pin.origin, set_aside=pin.aside) for pin in pins.rows],
+                                shift=pin.code, origin=pin.origin, set_aside=pin.aside.why if pin.aside else None)
+                       for pin in pins.rows],
                  pins_lost_to_leave=_lost_to_leave(roster),
                  editor=_editor(roster, solve_input, user), changes=_changes(changes))
 
