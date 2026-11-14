@@ -4,7 +4,8 @@
      "fingerprint": "<sha256 of the problem the roster was scored against>",
      "precheck": ["..."],                                     # plain-language feasibility issues
      "roster": {"N01": {"2026-03-01": "D", "2026-03-02": "", ...}, ...},   # "" = off or leave
-     "violations": [{"rule": "headcount", "nurse": null, "date": "2026-03-02", "text": "..."}],
+     "violations": [{"rule": "headcount", "nurse": null, "date": "2026-03-02", "text": "...",
+                     "shift": "D", "present": 0, "minimum": 1, "maximum": 2}],
      "elapsed_violations": [...],                             # hard rules broken wholly before
                                                               # replan_from: facts, not errors
      "cost": 23, "penalties": {"night_rest": 0, ...}, "department_cost": 9,
@@ -31,6 +32,9 @@ never has to reach back for them and stays bounded. A debt the month's recorded 
 not repay is carried whole in `hours_balance`. `preferences_not_kept` counts this month's days she
 asked off and works plus those she asked to work and is off, leave days left out: one month's
 memory, which doubles next month's price of her preferences when above 0.
+A violation states beside its words what a reader would otherwise parse out of them, each key only where the rule
+has the fact: `shift` on the rules of a shift-day (headcount, team leader, both genders, skill need), and `present`,
+`minimum` and `maximum` on a headcount.
 Without a roster (INFEASIBLE, UNKNOWN, MODEL_INVALID, or hard violations the validator
 found) `ok` is false; `roster`, `nurses` and `cost` are null when there is no roster at all.
 `ok` is true exactly when the CLI exits 0 (see `verdict`).
@@ -49,7 +53,7 @@ from .model import RosterModel, Solution, fingerprint
 from .precheck import needed_history
 from .problem import MAX_HISTORY, Problem
 from .request import Request
-from .rules import HARD, level
+from .rules import HARD, Match, level
 from .validate import last_worked, preferences_not_kept, rest_owed_after
 
 RESULT_VERSION = 1
@@ -74,6 +78,13 @@ def verdict(sol: Solution) -> tuple[int, str]:
     if sol.hard_errors:
         return 2, broken[6:-1]                                # "the roster breaks N hard rule(s)"
     return 0, ""
+
+
+def stated(m: Match, month: MonthInfo) -> dict:
+    """A match as it leaves the solver: who, the date, the words, and the facts the rule states beside them. The one
+    rendering a result's violations and a no-search check of a grid share, so the two cannot differ in shape."""
+    return {"nurse": m.nurse, "date": month.iso(m.day) if m.day is not None and 0 <= m.day < month.days else None,
+            "text": m.text, **m.facts()}
 
 
 def build_result(req: Request, rm: RosterModel | None, sol: Solution, *, precheck: list[str],
@@ -142,10 +153,7 @@ def build_result(req: Request, rm: RosterModel | None, sol: Solution, *, prechec
         if level(p, rid) != HARD:
             continue
         for m in r.matches:
-            item = {"rule": rid, "nurse": m.nurse,
-                    "date": month.iso(m.day) if m.day is not None and 0 <= m.day < month.days else None,
-                    "text": m.text}
-            out["elapsed_violations" if m.elapsed else "violations"].append(item)
+            out["elapsed_violations" if m.elapsed else "violations"].append({"rule": rid, **stated(m, month)})
     out["cost"], out["penalties"] = an.total, dict(sol.penalty_breakdown)
     out["department_cost"] = an.nurses.get("", 0)
     out["nurses"] = nurse_accounting(p, sol.assignment, an)

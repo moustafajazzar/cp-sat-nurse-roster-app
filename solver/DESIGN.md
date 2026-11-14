@@ -271,6 +271,7 @@ The CLI maps this to exit 4 and the service to HTTP 422.
   not contain any skill field. The full-run, overtime-share and probation fields are optional in both versions, and
   their defaults switch the rules off (`request._optional_rules`).
 * **Result**: version 1. New soft rules add keys to `penalties`, and new hard rules add `rule` values to `violations`.
+  A violation may gain keys beside `rule`, `nurse`, `date` and `text`; a reader ignores the ones it does not know.
 * **Problem JSON**: version 8. Only the current version is read.
 
 ## 14. Performance
@@ -279,3 +280,14 @@ On the 25-nurse emergency-unit sample (two 12-hour shifts, every rule on, 8 work
 about 5 200 variables and 10 300 constraints and builds in under 100 ms. A good roster arrives within a few seconds,
 and the search keeps improving it for a minute or two. Score balancing in `spread` mode and very large weight ratios
 slow convergence the most. The four-nurse sample is solved to proven optimality in well under a second.
+
+## 15. Decisions
+
+* **2026-11-14: a violation states its facts as fields.** A reader of a violation needed the shift of its shift-day and
+  a headcount's figures, and had only the sentence to take them from, so rewording a sentence could break a reader
+  without failing a test. A match now carries them as flat optional fields (`rules.Match`): `shift` on the four rules
+  of a shift-day (headcount, team leader, both genders, skill need), and `present`, `minimum` and `maximum` on a
+  headcount. They are the facts a reader uses today and no more; every other rule keeps rule, nurse, date and text.
+  `result.stated` is the one rendering of a match as it leaves the solver, shared by a result's violations and by a
+  no-search check of a grid (its violations and the matches of its explanation), which leaves a key out where the rule
+  has no such fact. The keys are additive, so the result stays version 1.

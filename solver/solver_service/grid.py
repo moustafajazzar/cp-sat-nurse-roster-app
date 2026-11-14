@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from nurse_roster.explain import explain
 from nurse_roster.request import load_request
-from nurse_roster.result import nurse_accounting
+from nurse_roster.result import nurse_accounting, stated
 from nurse_roster.rules import HARD, soft_ids
 
 
@@ -30,21 +30,16 @@ def validate_grid(solve_input: object, roster: object) -> dict:
     analysis = explain(req.problem, matrix)
     month = req.month
 
-    def date_of(day: int | None) -> str | None:
-        return month.iso(day) if day is not None and 0 <= day < month.days else None
-
     violations, elapsed_violations, rules = [], [], []
     for rule in analysis.rules.values():
         rules.append({
             "id": rule.id, "level": rule.level, "weight": rule.weight, "unit": rule.unit,
             "raw": rule.raw, "weighted": rule.weighted,
-            "matches": [{"nurse": m.nurse, "date": date_of(m.day), "amount": m.amount,
-                         "text": m.text, "elapsed": m.elapsed} for m in rule.matches],
+            "matches": [stated(m, month) | {"amount": m.amount, "elapsed": m.elapsed} for m in rule.matches],
         })
         if rule.level == HARD:
             for m in rule.matches:
-                item = {"rule": rule.id, "nurse": m.nurse, "date": date_of(m.day), "text": m.text}
-                (elapsed_violations if m.elapsed else violations).append(item)
+                (elapsed_violations if m.elapsed else violations).append({"rule": rule.id, **stated(m, month)})
     return {
         "ok": not violations,
         "violations": violations,

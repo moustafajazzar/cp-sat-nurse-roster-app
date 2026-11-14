@@ -31,6 +31,16 @@ class Match:
     text: str
     elapsed: bool = False       # lies wholly before Problem.planning_from: a recorded fact; for a
                                 # hard rule it is reported apart from the errors, never enforced
+    # What the words say, for a reader that should not parse them. Only the rules that have the fact state it.
+    shift: str | None = None    # the shift of the shift-day, on a rule about one
+    present: int | None = None  # a headcount: the nurses counted on the shift-day,
+    minimum: int | None = None  # and the range they are outside
+    maximum: int | None = None
+
+    def facts(self) -> dict:
+        """The stated facts, by name."""
+        named = {"shift": self.shift, "present": self.present, "minimum": self.minimum, "maximum": self.maximum}
+        return {name: value for name, value in named.items() if value is not None}
 
 
 @dataclass(frozen=True, slots=True)

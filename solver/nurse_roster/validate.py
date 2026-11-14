@@ -221,7 +221,7 @@ def _headcount(c: Ctx) -> list[Match]:
             present = len(_pure(c, ai, d)) + sum(1 for n in c.staff if c.a[n][d] in extra)
             if not lo <= present <= hi:
                 out.append(Match(None, d, 1, f"headcount: day {d} {hc.shift} = {present}, want {lo}..{hi}",
-                                 elapsed=d < c.F))
+                                 elapsed=d < c.F, shift=hc.shift, present=present, minimum=lo, maximum=hi))
     return out
 
 
@@ -230,7 +230,8 @@ def _team_leader(c: Ctx) -> list[Match]:
     for hc in c.p.department.headcounts:
         for d in range(c.D):
             if not any(c.p.nurses[n].team_leader for n in _pure(c, c.idx[hc.shift], d)):
-                out.append(Match(None, d, 1, f"team leader: day {d} {hc.shift} has none", elapsed=d < c.F))
+                out.append(Match(None, d, 1, f"team leader: day {d} {hc.shift} has none", elapsed=d < c.F,
+                                 shift=hc.shift))
     return out
 
 
@@ -240,7 +241,8 @@ def _gender(c: Ctx) -> list[Match]:
         for d in range(c.D):
             gs = {c.p.nurses[n].gender for n in _pure(c, c.idx[hc.shift], d)}
             if not {"M", "F"} <= gs:
-                out.append(Match(None, d, 1, f"gender: day {d} {hc.shift} has only {gs}", elapsed=d < c.F))
+                out.append(Match(None, d, 1, f"gender: day {d} {hc.shift} has only {gs}", elapsed=d < c.F,
+                                 shift=hc.shift))
     return out
 
 
@@ -272,7 +274,7 @@ def _skill_need(c: Ctx) -> list[Match]:
             if have < want:
                 out.append(Match(None, d, want - have,
                                  f"skill need: day {d} {k.shift} has {have} holding {k.skill}, needs {want} "
-                                 f"({want - have} short)", elapsed=d < c.F))
+                                 f"({want - have} short)", elapsed=d < c.F, shift=k.shift))
     return out
 
 
