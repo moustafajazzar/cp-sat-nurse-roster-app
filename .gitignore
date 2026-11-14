@@ -19,6 +19,7 @@ frontend/dist/
 .DS_Store
 .idea/
 .vscode/
+.claude/
 
 # Solver CLI outputs
 result.json
