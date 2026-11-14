@@ -33,13 +33,12 @@ from nurse_roster.request import load_request
 
 from accounts.models import Role
 from hospital.models import Shift
-from rosters.approved import ApprovedMonth, NewCell, newly_broken, with_pins
+from nurses.models import NurseProfile
 from rosters.cell_words import bar_said
-from rosters.cells import COVER
-from rosters.editing import Checked, accounted, scored
+from rosters.cells import COVER, MonthCells, NewCell
+from rosters.checking import Checked, accounted
 from rosters.models import Roster
 from rosters.pins import long_date
-from solves.input import assemble
 from solves.result import headcount_of, shift_day
 
 # The solver's check, quoted beside each, names the skill and the figures, so a need's line does not read them out of its words.
@@ -88,14 +87,29 @@ def _lack_words(violation: dict) -> str:
     return f"{said} (the solver's check: {violation['text']})."
 
 
-class CoverMonth(ApprovedMonth):
-    """The roster in force's month as a cover reads it, read once for every nurse judged."""
+class CoverMonth:
+    """The roster in force's month as a cover reads it, read once for every nurse judged. Whether her cell can hold the shift,
+    and what her taking it newly breaks, are asked of the month's cells (`rosters.cells`)."""
 
     def __init__(self, roster: Roster, day: dt.date, shift: Shift):
-        super().__init__(roster)
+        self.roster, self.unit, self.month = roster, roster.unit, roster.month
         self.day, self.shift = day, shift
-        self.input = assemble(self.unit, self.month).input
-        self.before = scored(self.input, roster.grid)
+        self.cells = MonthCells(self.unit, self.month)
+        # Everyone with a row on the grid, one no longer in the month included, whom the cells do not plan for.
+        on_grid = NurseProfile.objects.filter(user__username__in=list(roster.grid)).select_related("user")
+        self.on_grid = {nurse.user.username: nurse for nurse in on_grid}
+
+    @property
+    def input(self) -> dict:
+        return self.cells.solve_input
+
+    @property
+    def before(self) -> Checked:
+        """The roster in force's check with the solver's own code, on the month as it stands."""
+        return self.cells.checked(self.roster.grid)
+
+    def cell(self, hospital_id: str, day: dt.date) -> str:
+        return self.roster.grid.get(hospital_id, {}).get(day.isoformat(), "")
 
     def exclusion(self, hospital_id: str) -> str | None:
         """Why this nurse could not take the cover before her grid is checked, as a key worded for her: `not_on_grid`,
@@ -128,7 +142,7 @@ class CoverMonth(ApprovedMonth):
         on = long_date(self.day)
         why = self.exclusion(hospital_id)
         if why == "works":
-            held = self.shifts.get(self.cell(hospital_id, self.day))
+            held = self.cells.shift(self.cell(hospital_id, self.day))
             what = f"{held.display_name} ({held.code})" if held else self.cell(hospital_id, self.day)
             return [f"You already work {what} on {on}, so you cannot take this cover."]
         if why == "barred":
@@ -168,9 +182,8 @@ class CoverMonth(ApprovedMonth):
 
     def with_her(self, hospital_id: str) -> tuple[Checked, list[dict]]:
         """Her grid's check, and the hard rules it newly breaks."""
-        new_cells = [NewCell(hospital_id, self.day, self.shift.code)]
-        after = scored(with_pins(self.input, self, new_cells), self.grid_after(new_cells))
-        return after, (newly_broken(self.before.violations, after.violations) if after.answer else [])
+        broken = self.cells.breaks(self.roster.grid, [NewCell(hospital_id, self.day, self.shift.code)])
+        return broken.after, broken.violations
 
     def full(self) -> str | None:
         """Why one more nurse cannot help, when the shift-day is already at its maximum headcount."""

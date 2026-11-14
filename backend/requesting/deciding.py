@@ -24,9 +24,8 @@ from nurses import membership
 from nurses.models import NurseProfile
 from requesting.models import Request, RequestState, RequestStep, Step, what_of
 from rosters import in_force
-from rosters.approved import NewCell
 from rosters.cell_words import manager_said
-from rosters.cells import REQUEST, Holds, MonthCells
+from rosters.cells import REQUEST, Holds, MonthCells, NewCell
 from rosters.drafts import FROZEN, current_code
 from rosters.models import PinEnded, PinnedCell, PinOrigin, Roster, RosterState, RosterVersion
 from rosters.pins import end, long_date, pin_cell

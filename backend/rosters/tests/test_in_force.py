@@ -21,7 +21,7 @@ from nurses import membership
 from nurses.leave import take_off_for_leave
 from nurses.models import NurseProfile, Placement
 from rosters import in_force
-from rosters.approved import NewCell
+from rosters.cells import NewCell
 from rosters.drafts import in_current_codes
 from rosters.models import Roster, RosterState, RosterVersion
 from rosters.tests.conftest import approved_roster

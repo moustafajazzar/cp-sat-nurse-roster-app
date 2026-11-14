@@ -12,7 +12,7 @@ from covers.models import Cover
 from nurses import membership
 from nurses.models import NurseProfile
 from rosters import in_force
-from rosters.approved import NewCell
+from rosters.cells import NewCell
 from rosters.models import Roster, RosterVersion
 from rosters.pins import long_date
 from units.models import Unit

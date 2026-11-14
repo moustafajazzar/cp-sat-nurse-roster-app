@@ -35,7 +35,7 @@ from notifications import sending
 from nurses import membership
 from nurses.models import NurseProfile
 from rosters import review
-from rosters.approved import NewCell
+from rosters.cells import NewCell
 from rosters.drafts import current_codes
 from rosters.models import Roster, RosterState, RosterVersion, VersionOrigin
 from rosters.versions import Grid, differences
