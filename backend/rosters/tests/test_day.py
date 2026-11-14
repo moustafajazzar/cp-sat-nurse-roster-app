@@ -316,6 +316,29 @@ class TestClosedMonth:
         assert er_row["figures"]["overtime_cap"] == 400
         assert json.dumps(changed_since) == json.dumps(stored)
 
+    def test_a_close_stored_with_the_solvers_old_words_and_no_fields_reads_the_same(self, june, mona, carla, er, on):
+        """A close made before the solver stated a violation's shift and figures holds only its words, with days counted
+        from 0: "headcount: day 3 D = 2, want 1..1"."""
+        set_rules(er, require_team_leader=True, require_both_genders=True)
+        changed(mona, er, off("Emad", 1), pin("Badr", 4, "D"))
+        on(dt.date(2026, 7, 2))
+        close = making.close(er, dt.date(2026, 6, 1))
+        as_now = [copy.deepcopy(day(carla, date)) for date in ("2026-06-01", "2026-06-02", "2026-06-04")]
+
+        for broke in close.result["facts_broke"]:
+            if broke["date"]:
+                broke["text"] = broke["text"].replace(broke["date"], f"day {int(broke['date'][-2:]) - 1}")
+            for stated in ("shift", "present", "minimum", "maximum"):
+                broke.pop(stated, None)
+        close.save()
+        as_stored = [day(carla, date) for date in ("2026-06-01", "2026-06-02", "2026-06-04")]
+
+        assert {"rule": "headcount", "nurse": None, "date": "2026-06-04", "text": "headcount: day 3 D = 2, want 1..1"} \
+            in close.result["facts_broke"]
+        assert counts(as_stored[0])["D"] == "0 of 1-1 short" and counts(as_stored[2])["D"] == "2 of 1-1 over"
+        assert cell(as_stored[1], "D")["team_leader"] is False and cell(as_stored[1], "N")["both_genders"] is False
+        assert json.dumps(as_stored) == json.dumps(as_now)
+
     def test_a_month_over_but_not_closed_reads_as_approved(self, june, carla, on):
         on(dt.date(2026, 7, 1))
 
