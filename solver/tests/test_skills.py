@@ -413,12 +413,12 @@ def test_a_grid_is_scored_with_the_two_rules_named_and_dated():
     answer = validate_grid(req, roster)
 
     assert {"rule": "skill_expired", "nurse": "Dana", "date": "2026-06-26",
-            "text": "skill expired: Dana works N on day 25, BLS is required to work and its last day was day 23"} \
+            "text": "skill expired: Dana works N on 2026-06-26, BLS is required to work and its last day was 2026-06-24"} \
         in answer["violations"]
     need = next(r for r in answer["rules"] if r["id"] == "skill_need")
     assert need["level"] == SOFT and need["weight"] == 50 and need["raw"] == 30 and need["weighted"] == 30 * 50
     assert need["matches"][0] == {"nurse": None, "date": "2026-06-01", "amount": 1, "elapsed": False, "shift": "N",
-                                  "text": "skill need: day 0 N has 0 holding ICU, needs 1 (1 short)"}
+                                  "text": "skill need: 2026-06-01 N has 0 holding ICU, needs 1 (1 short)"}
     # June 2026 from a Monday, four Fridays: 26 working days at 7 h (breastfeeding) = 182 h owed, one 12 h shift worked
     assert nurses_of(req, roster)["Dana"]["carry_over"]["hours_balance"] == 182 - 12
 

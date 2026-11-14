@@ -193,38 +193,38 @@ def precheck(p: Problem) -> list[str]:
         need = -(-sum(hc.weekend_min if p.is_weekend(d) else hc.weekday_min for hc in anchors)
                  // max(1, max(cover.values(), default=1)))
         if len(here) < need:
-            issues.append(f"day {d}: headcounts need {need} nurses but only {len(here)} are not on leave")
+            issues.append(f"{p.day_words(d)}: headcounts need {need} nurses but only {len(here)} are not on leave")
         for hc in dep.headcounts:
             lo = (hc.weekend_min if p.is_weekend(d) else hc.weekday_min) if dep.headcount_enabled else 0
             covering = set([hc.shift] + list(hc.also_counts))
             avail = [n for n in here if today[n.id] & covering]
             if len(avail) < lo:
-                issues.append(f"day {d}: {hc.shift} needs {lo} but only {len(avail)} eligible nurses "
+                issues.append(f"{p.day_words(d)}: {hc.shift} needs {lo} but only {len(avail)} eligible nurses "
                               f"are not on leave")
             hi = (hc.weekend_max if p.is_weekend(d) else hc.weekday_max) if dep.headcount_enabled else N
             pinned_in = sum(1 for n in here if n.pinned.get(d) in covering)
             if pinned_in > hi:
-                issues.append(f"day {d}: {pinned_in} nurses are pinned to {hc.shift} (or a shift counted "
+                issues.append(f"{p.day_words(d)}: {pinned_in} nurses are pinned to {hc.shift} (or a shift counted "
                               f"with it) but its headcount allows at most {hi}")
         pure = {hc.shift: [n for n in here if hc.shift in today[n.id]] for hc in dep.headcounts}
         if dep.require_team_leader:
             tls = {s: sum(1 for n in ns if n.team_leader) for s, ns in pure.items()}
             for s, c in tls.items():
                 if c == 0:
-                    issues.append(f"day {d}: no team leader available for {s}")
+                    issues.append(f"{p.day_words(d)}: no team leader available for {s}")
             if all(c > 0 for c in tls.values()) and len(dep.headcounts) > \
                     sum(1 for n in here if n.team_leader and allowed[n.id] & set(pure)):
-                issues.append(f"day {d}: {len(dep.headcounts)} anchor shifts need a team leader each, "
+                issues.append(f"{p.day_words(d)}: {len(dep.headcounts)} anchor shifts need a team leader each, "
                               f"only {sum(1 for n in here if n.team_leader)} available")
         if dep.require_both_genders:
             for sex, word in (("M", "male"), ("F", "female")):
                 cnt = {s: sum(1 for n in ns if n.gender == sex) for s, ns in pure.items()}
                 for s, c in cnt.items():
                     if c == 0:
-                        issues.append(f"day {d}: no {word} nurse available for {s}")
+                        issues.append(f"{p.day_words(d)}: no {word} nurse available for {s}")
                 if all(c > 0 for c in cnt.values()) and len(dep.headcounts) > \
                         sum(1 for n in here if n.gender == sex and allowed[n.id] & set(pure)):
-                    issues.append(f"day {d}: {len(dep.headcounts)} anchor shifts need a {word} nurse "
+                    issues.append(f"{p.day_words(d)}: {len(dep.headcounts)} anchor shifts need a {word} nurse "
                                   f"each, only {sum(1 for n in here if n.gender == sex)} available")
 
     # ---- skill needs: anyone holding the skill, enough who may work the shift, each day --------
@@ -247,7 +247,7 @@ def precheck(p: Problem) -> list[str]:
             today = [n for n in able if holds_skill(n, k.skill, d) and d not in off_days(n)
                      and n.pinned.get(d, k.shift) == k.shift]
             if len(today) < want:
-                issues.append(f"day {d}: {name} needs {want} but only {len(today)} nurse(s) holding {k.skill} "
+                issues.append(f"{p.day_words(d)}: {name} needs {want} but only {len(today)} nurse(s) holding {k.skill} "
                               f"may work {k.shift} (not on leave, pinned elsewhere or barred)" + priced)
 
     # ---- required skills that expire inside the month: no shift after the last day ---------
@@ -255,7 +255,7 @@ def precheck(p: Problem) -> list[str]:
         for skill, last in expired_required(p, n):
             if last >= 0:
                 issues.append(f"{n.id}: {skill}, required to work, expires inside the month: its last day is "
-                              f"{expiry_words(last)}, so no shift after it")
+                              f"{expiry_words(p, last)}, so no shift after it")
 
     # ---- pins that break a pattern rule between themselves ------------------------------
     succ = set(p.successions())
@@ -263,7 +263,7 @@ def precheck(p: Problem) -> list[str]:
         for d, s in n.pinned.items():
             nxt = n.pinned.get(d + 1)
             if s and nxt and (s, nxt) in succ and d + 1 >= cut:   # both elapsed: a fact
-                issues.append(f"{n.id}: pinned {s} on day {d} and {nxt} on day {d + 1} is a forbidden succession")
+                issues.append(f"{n.id}: pinned {s} on {p.day_words(d)} and {nxt} on {p.day_words(d + 1)} is a forbidden succession")
 
     # ---- shifts no headcount governs are unbounded --------------------------------------
     if dep.headcount_enabled:

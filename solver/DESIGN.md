@@ -10,7 +10,10 @@ honest. [how-to.md](how-to.md) covers usage.
   defaults and no settings for any particular unit. Every rule, switch and weight is in the request, and a missing
   field is an error that names its path.
 * **Dates at the edge, indices inside.** Requests and results use ISO dates. Internally, days are 0-based indices
-  within the month, and the request loader translates any error that names a day back into a date.
+  within the month, kept for arithmetic. Words are dated where they are made: a sentence about a day asks
+  `Problem.day_words` for it, which says the ISO date when the problem knows its month and "day N" when it does not, so
+  no text in a result or a check of a grid counts a day. The problem's own errors are the exception: the request loader
+  translates any of them that names a day back into a date.
 * **One rule registry.** `rules.py` lists every rule once, with its level, weight field and unit. The model, the
   validator and the explanation all iterate over the same registry. A rule's `active(p, id)` predicate controls whether
   the model adds anything for it and whether the validator evaluates it.
@@ -291,3 +294,11 @@ slow convergence the most. The four-nurse sample is solved to proven optimality 
   `result.stated` is the one rendering of a match as it leaves the solver, shared by a result's violations and by a
   no-search check of a grid (its violations and the matches of its explanation), which leaves a key out where the rule
   has no such fact. The keys are additive, so the result stays version 1.
+* **2026-11-14: every text leaving the solver names dates.** The validator's and the precheck's sentences counted the
+  month's days from 0 ("day 8" is the 9th), and every reader had to translate them, on each page that showed one. A
+  sentence is now written dated (`Problem.day_words`), with the date standing where "day N" stood and the rest of its
+  wording kept; a day before the month is a date too. A problem with no month still says "day N", so the library works
+  on a bare problem. No sentence puts the word "day" directly before a date: results stored earlier hold the old
+  words, and their reader, which looks for "day" and a number, must leave the new words alone. A forbidden succession
+  was dated on its second shift's day while its words named only the first; its words now name both days
+  ("N on 2026-06-08 -> D on 2026-06-09"), and its date stays the second.

@@ -291,7 +291,7 @@ def _rule_results(solve: Solve, explained: dict[str, dict] | None, names: dict[s
         if found is None:
             return RuleResult(rule=rule, penalty=penalty, weight=None, amount=None, counted_in=None, largest=[], others=0)
         largest = [RuleMatch(hospital_id=match["nurse"], full_name=names.get(match["nurse"], ""), date=match["date"],
-                             amount=match["amount"], text=in_dates(match["text"], solve.month))
+                             amount=match["amount"], text=match["text"])
                    for match in found["matches"][:LARGEST]]
         return RuleResult(rule=rule, penalty=penalty, weight=found["weight"], amount=found["raw"], counted_in=found["unit"],
                           largest=largest, others=max(0, len(found["matches"]) - LARGEST))

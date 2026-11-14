@@ -31,8 +31,10 @@ def has_a_roster_to_keep(result: dict | None) -> bool:
 
 
 def in_dates(text: str, month: dt.date) -> str:
-    """The solver's words count a month's days from 0 ("day 4" is the 5th), and from below 0 for the days before it, which
-    next to a date in the same line reads as a mistake."""
+    """Words kept in a stored result or a stored close, read with dates. Those the solver wrote before it dated its own count
+    a month's days from 0 ("day 4" is the 5th), and from below 0 for the days before it, which next to a date in the same line
+    reads as a mistake. Those it wrote since name dates and pass unchanged. Only stored words need this: a fresh answer of the
+    solver's code is dated already."""
     return _DAY.sub(lambda found: (month + dt.timedelta(days=int(found[1]))).isoformat(), text)
 
 

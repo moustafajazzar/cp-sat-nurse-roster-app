@@ -158,6 +158,6 @@ def close_month(request: HttpRequest, unit_id: UUID, body: CloseBody) -> MonthCl
         except making.Refused as refused:
             raise HttpError(409, str(refused)) from None
         except ValueError as e:
-            raise HttpError(409, f"The solver's code cannot read this month as it stands, so it cannot close: {in_dates(str(e), month)}")
+            raise HttpError(409, f"The solver's code cannot read this month as it stands, so it cannot close: {e}")
     return _view(unit, month, request.user)
 

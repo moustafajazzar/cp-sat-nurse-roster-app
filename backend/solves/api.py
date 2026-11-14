@@ -126,7 +126,7 @@ def preview(request: HttpRequest, unit_id: UUID, filters: Query[MonthFilter]) ->
     issues = None
     if refusal is None and assembled.nurses:
         try:
-            issues = [in_dates(issue, month) for issue in solver_client.precheck(assembled.input)]
+            issues = solver_client.precheck(assembled.input)
         except SolverRefused as e:
             refusal = str(e)
         except SolverUnreachable:
@@ -269,7 +269,7 @@ def preview_replan(request: HttpRequest, unit_id: UUID, filters: Query[ReplanFil
         differ = recorded_cells_differ(assembled.input)
         if rules_refusal is None:
             try:
-                issues = [in_dates(issue, month) for issue in solver_client.precheck(assembled.input)]
+                issues = solver_client.precheck(assembled.input)
             except SolverRefused as e:
                 rules_refusal = str(e)
             except SolverUnreachable:
@@ -318,7 +318,7 @@ def start_replan(request: HttpRequest, unit_id: UUID, body: StartReplanBody) -> 
         refusal = solver_refusal(assembled.input)
         if refusal:
             raise HttpError(409, f"The solver refuses the month as it stands, so review the unit rules and the roster in force: "
-                                 f"{in_dates(refusal, month)}")
+                                 f"{refusal}")
         solve = Solve.objects.create(unit=unit, month=month, requested_by=request.user,
                                      time_limit_seconds=body.time_limit_seconds, input=assembled.input,
                                      outside_days=assembled.outside_days, replan_from=body.replan_from,

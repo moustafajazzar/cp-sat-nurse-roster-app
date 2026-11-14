@@ -302,7 +302,7 @@ def test_a_version_2_input_is_solved_with_its_skills_and_scored_with_both_rules(
     issues = client.post("/precheck", json=skills).json()["issues"]
     job = wait_for(client, client.post("/solve", json=skills).json()["job_id"], ended)
 
-    assert "Dana: BLS, required to work, expires inside the month: its last day is day 23, so no shift after it" \
+    assert "Dana: BLS, required to work, expires inside the month: its last day is 2026-06-24, so no shift after it" \
         in issues
     result = job["result"]
     assert job["state"] == "finished" and result["ok"] is True and result["version"] == 1
@@ -313,7 +313,7 @@ def test_a_version_2_input_is_solved_with_its_skills_and_scored_with_both_rules(
     roster["Dana"]["2026-06-27"] = "D"
     v = client.post("/validate", json={"solve_input": skills, "roster": roster}).json()
     assert {"rule": "skill_expired", "nurse": "Dana", "date": "2026-06-27",
-            "text": "skill expired: Dana works D on day 26, BLS is required to work and its last day was day 23"} \
+            "text": "skill expired: Dana works D on 2026-06-27, BLS is required to work and its last day was 2026-06-24"} \
         in v["violations"]
     need = next(r for r in v["rules"] if r["id"] == "skill_need")
     assert need["level"] == "soft" and need["weight"] == 50 and need["weighted"] == 50 * need["raw"]
@@ -429,7 +429,7 @@ def test_validate_names_the_nurse_the_day_her_preceptors_shift_and_hers(client, 
 
     assert [x for x in v["violations"] if x["rule"] == "following"] == [
         {"rule": "following", "nurse": "Faten", "date": "2026-06-03",
-         "text": "following: Faten works D on day 2, when her preceptor Amal is off, while she is off on day 1, when "
+         "text": "following: Faten works D on 2026-06-03, when her preceptor Amal is off, while she is off on 2026-06-02, when "
                  "Amal works D"}]
     rule = next(r for r in v["rules"] if r["id"] == "following")
     assert rule["level"] == "hard" and [m["nurse"] for m in rule["matches"]] == ["Faten"]

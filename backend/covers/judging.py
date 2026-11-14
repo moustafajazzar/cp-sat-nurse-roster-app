@@ -31,7 +31,7 @@ from rosters.editing import Checked, accounted, scored
 from rosters.models import PinOrigin, Roster
 from rosters.pins import long_date
 from solves.input import assemble
-from solves.result import headcount_of, in_dates, shift_day
+from solves.result import headcount_of, shift_day
 
 LACKS = {"team_leader": "No team leader", "gender": "Not both genders"}
 
@@ -66,14 +66,14 @@ def _on(violations: list[dict], day: dt.date, code: str) -> list[dict]:
             and shift_day(row) == (day.isoformat(), code)]
 
 
-def _lack_words(violation: dict, month: dt.date) -> str:
+def _lack_words(violation: dict) -> str:
     if violation["rule"] == "headcount":
         present, low, high = headcount_of(violation)
         said = (f"Below its minimum headcount: {present} of at least {low}" if present < low
                 else f"Above its maximum headcount: {present} of at most {high}")
     else:
         said = LACKS[violation["rule"]]
-    return f"{said} (the solver's check: {in_dates(violation['text'], month)})."
+    return f"{said} (the solver's check: {violation['text']})."
 
 
 class CoverMonth(ApprovedMonth):
@@ -142,7 +142,7 @@ class CoverMonth(ApprovedMonth):
             return ["This cover cannot be checked against the roster now. Ask your manager."]
         said = []
         for violation in broken:
-            text = in_dates(violation["text"], self.month)
+            text = violation["text"]
             if violation["nurse"] == hospital_id:
                 said.append(f"This breaks a rule for you: {text}")
             elif violation["rule"] == "headcount":
@@ -184,8 +184,8 @@ def judge(roster: Roster, day: dt.date, shift: Shift) -> CoverJudged:
     refuses are an answer to show, not an error."""
     month = CoverMonth(roster, day, shift)
     if month.before.reason:
-        return CoverJudged(reason=f"The roster in force cannot be checked: {in_dates(month.before.reason, month.month)}")
-    judged = CoverJudged(lack=[_lack_words(row, month.month) for row in _on(month.before.answer["violations"], day, shift.code)])
+        return CoverJudged(reason=f"The roster in force cannot be checked: {month.before.reason}")
+    judged = CoverJudged(lack=[_lack_words(row) for row in _on(month.before.answer["violations"], day, shift.code)])
     judged.full = month.full()
     if judged.full:
         return judged
@@ -196,7 +196,7 @@ def judge(roster: Roster, day: dt.date, shift: Shift) -> CoverJudged:
             continue
         after, broken = month.with_her(hospital_id)
         if after.reason:
-            judged.reason = f"A nurse's grid cannot be checked: {in_dates(after.reason, month.month)}"
+            judged.reason = f"A nurse's grid cannot be checked: {after.reason}"
             judged.nurses = []
             return judged
         if broken or hospital_id not in figures:

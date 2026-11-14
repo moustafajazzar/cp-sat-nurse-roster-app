@@ -402,7 +402,7 @@ def test_cli_solves_the_er_fixture_and_writes_result_and_csv(tmp_path, capsys, m
     assert all(isinstance(n["carry_over"]["preferences_not_kept"], int) for n in res["nurses"].values())
     an = explain(read_request(FIXTURE).problem, [[-1] * 31 if nid == "N05" else [0] * 31 for nid in res["roster"]])
     assert [m.text for m in an.rules["desired_day"].matches if m.nurse == "N05"] == \
-        ["N05: off on day 15 (asked to work; counts double, a preference was not kept last month)"]
+        ["N05: off on 2026-03-16 (asked to work; counts double, a preference was not kept last month)"]
     header = c.read_text().splitlines()[0].split(",")
     assert header[:4] == ["nurse", "TL", "sex", "score"] and header[14:45] == [f"{d + 1}{w}" for d, w in
                                                                               zip(range(31), ("Su Mo Tu We Th Fr Sa " * 5).split())]
@@ -619,7 +619,7 @@ def test_night_rest_owed_survives_a_month_of_other_work():
     jp = load_request(july).problem
     assert jp.nurses[0].rest_owed == 2 and rest_owed_after(2, jp.nurses[0].previous, "N", "D", 2) == 2
     assert validate(jp, [[0] + [-1] * 30])[0] == \
-        ["night rest: a D day 0 has only 0 day(s) off, 2 still owed to a night before her history"]
+        ["night rest: a D 2026-07-01 has only 0 day(s) off, 2 still owed to a night before her history"]
     assert validate(jp, [[-1, -1, 0] + [-1] * 28])[0] == []   # two off days pay it back
     july["nurses"][0]["pinned"] = {"2026-07-01": "D"}
     jp = load_request(july).problem
@@ -849,7 +849,7 @@ def test_a_retired_shift_in_the_history_is_work_of_no_kind():
     assert req.problem.nurses[0].previous == ["C", "C", "C"]
     assert any("history names ['C'], which the unit no longer defines" in i for i in precheck(req.problem))
     assert solve(build_model(req.problem), req.problem, time_limit=5, workers=2).status == "INFEASIBLE"   # 4 in a row
-    assert validate(req.problem, [[0] + [-1] * 29])[0] == ["consecutive: a 4 shifts in a row at day 0"]
+    assert validate(req.problem, [[0] + [-1] * 29])[0] == ["consecutive: a 4 shifts in a row at 2026-06-01"]
     p.nurses[0].pinned = {1: "D"}
     req, res = solved(p, "2026-06")
     assert res["ok"] and res["roster"]["a"]["2026-06-01"] == "" and res["nurses"]["a"]["carry_over"]["last_shift_kind"] == "day"

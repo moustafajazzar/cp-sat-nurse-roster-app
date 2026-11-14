@@ -13,7 +13,7 @@ import json
 import math
 import re
 from dataclasses import dataclass, field, fields, asdict
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import IO
 
@@ -128,9 +128,9 @@ def followable_candidates(p: "Problem", nurse: Nurse) -> list[int]:
     return [d for d in range(p.planning_from, p.days) if d not in nurse.pinned and d not in off]
 
 
-def expiry_words(last: int) -> str:
-    """A skill's last day, in the solver's day numbering: "day 4", or "before the month"."""
-    return "before the month" if last < 0 else f"day {last}"
+def expiry_words(p: "Problem", last: int) -> str:
+    """A skill's last day in words (`Problem.day_words`), or "before the month"."""
+    return "before the month" if last < 0 else p.day_words(last)
 
 
 def expired_required(p: "Problem", nurse: Nurse) -> list[tuple[str, int]]:
@@ -299,6 +299,17 @@ class Problem:
 
     def weekday(self, d: int) -> int:
         return (self.first_weekday + d) % 7
+
+    def day_words(self, d: int) -> str:
+        """Day `d` as a sentence names it: its ISO date when the problem knows its month, for a day before the month too
+        (`d` below 0, a history day), and "day 4", counted from 0, when it does not. The one wording of a day for every
+        text made from the problem, so a reader meets a date and never an index. No sentence puts the word "day"
+        directly before these words: a reader of the texts written before them, which count days, would take the year
+        of "day 2026-06-05" for a day's number."""
+        if self.month is None:
+            return f"day {d}"
+        year, month = (int(part) for part in self.month.split("-"))
+        return (date(year, month, 1) + timedelta(days=d)).isoformat()
 
     def is_weekend(self, d: int) -> bool:
         return self.weekday(d) in self.general.weekend_weekdays

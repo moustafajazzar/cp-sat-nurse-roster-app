@@ -110,7 +110,7 @@ def _decision(request: HttpRequest, unit_id: UUID, swap_id: UUID) -> SwapDecisio
     judged = judge(roster, steps.new_cells_of(swap), None, exclude=swap)
     answer.problems = list(dict.fromkeys(problem.manager for problem in judged.problems))
     if judged.after is not None:
-        answer.check = _grid_check(judged.after, roster.month)
+        answer.check = _grid_check(judged.after)
         answer.cost_before, answer.cost_after = judged.cost_before, judged.cost_after
         if judged.cost_before is not None and judged.cost_after is not None:
             answer.delta = judged.cost_after - judged.cost_before

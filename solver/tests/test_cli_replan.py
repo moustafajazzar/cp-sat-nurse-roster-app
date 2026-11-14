@@ -81,10 +81,10 @@ def test_cli_applies_cutoff_and_baseline_before_checking_elapsed_eligibility(tmp
     out = json.loads(exported.read_text())
     assert list(out["roster"]["a"].values()) == ["N"] + ["D"] * (DAYS - 1)
     assert list(out["roster"]["b"].values()) == ["D"] + [""] * (DAYS - 1)
-    assert [v["text"] for v in out["elapsed_violations"]] == ["shift restriction: a works N on day 0"]
+    assert [v["text"] for v in out["elapsed_violations"]] == ["shift restriction: a works N on 2026-06-01"]
     report = json.loads(analysis.read_text())
     assert report["errors"] == [] and report["total"] == 0
-    assert report["elapsed"] == ["shift restriction: a works N on day 0"]
+    assert report["elapsed"] == ["shift restriction: a works N on 2026-06-01"]
 
 
 OK_ROW = [["D"] + [""] * (DAYS - 1)]

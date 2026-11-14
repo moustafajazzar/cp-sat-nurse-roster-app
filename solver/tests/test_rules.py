@@ -90,8 +90,8 @@ def test_unavailable_and_allowed_shifts():
 
 def test_succession_including_the_month_boundary():
     p = mini(3, ["D", "N"], [Nurse("a", previous=["N"])], no_mixed_blocks=True)
-    assert violates(p, [[0, -1, -1]], "succession") == ["succession: a N->D day -1"]
-    assert violates(p, [[-1, 0, 1]], "succession") == ["succession: a D->N day 1"]
+    assert violates(p, [[0, -1, -1]], "succession") == ["succession: a N on day -1 -> D on day 0"]
+    assert violates(p, [[-1, 0, 1]], "succession") == ["succession: a D on day 1 -> N on day 2"]
     assert violates(p, [[-1, 1, 1]], "succession") == []
 
 

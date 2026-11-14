@@ -63,8 +63,8 @@ def test_a_forbidden_succession_wholly_in_the_past_is_a_fact():
     assert not any("forbidden succession" in i for i in precheck(p))
     sol = solve(build_model(p), p, time_limit=5)
     assert sol.status == "OPTIMAL" and sol.hard_errors == []
-    assert sol.analysis.elapsed == ["succession: a N->D day 0"]
-    assert explain(p, [[1, 0, 1]]).errors == ["succession: a D->N day 1"]   # crossing the cutoff: an error
+    assert sol.analysis.elapsed == ["succession: a N on day 0 -> D on day 1"]
+    assert explain(p, [[1, 0, 1]]).errors == ["succession: a D on day 1 -> N on day 2"]   # crossing the cutoff: an error
 
 
 # ---- obligations crossing the cutoff stay enforced ---------------------------------------------
@@ -182,7 +182,7 @@ def test_cli_reports_elapsed_facts_and_still_succeeds(tmp_path, capsys):
     assert main(["solve", f]) == 0                             # not 2: no hard violation
     out = capsys.readouterr().out
     assert "recorded before 2026-06-02 (facts, not errors): 1 rule violation(s)" in out
-    assert "headcount: day 0 D = 0, want 1..1" in out and "HARD VIOLATIONS" not in out
+    assert "headcount: 2026-06-01 D = 0, want 1..1" in out and "HARD VIOLATIONS" not in out
 
 
 def test_model_and_validator_agree_on_a_realistic_replan():

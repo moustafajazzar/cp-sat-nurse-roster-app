@@ -25,7 +25,6 @@ from rosters.models import PinOrigin, Roster
 from rosters.pins import long_date
 from rosters.versions import Grid
 from solves.input import assemble
-from solves.result import in_dates
 from swaps.models import WAITING, Swap, SwapCell
 
 # A shift-day rule with no nurse that says nothing of anyone: how many work it, which any reader of the roster can count.
@@ -156,7 +155,7 @@ def _cell_problem(month: SwapMonth, new_cell: NewCell, index: int, proposer: Nur
 
 def _violation_problem(violation: dict, month: SwapMonth, new_cells: list[NewCell], proposer: NurseProfile | None,
                        preceptors: dict[str, str]) -> Problem:
-    text = in_dates(violation["text"], month.month)
+    text = violation["text"]
     day = dt.date.fromisoformat(violation["date"]) if violation["date"] else None
     nurse = month.on_grid.get(violation["nurse"]) if violation["nurse"] else None
     preceptor = month.on_grid.get(preceptors.get(violation["nurse"], ""))
@@ -195,7 +194,7 @@ def judge(roster: Roster, new_cells: list[NewCell], proposer: NurseProfile | Non
     judged.before = scored(solve_input, roster.grid)
     judged.after = scored(with_pins(solve_input, month, new_cells), judged.grid)
     if judged.after.reason:
-        judged.problems.append(Problem(f"The swap cannot be checked: {in_dates(judged.after.reason, month.month)}",
+        judged.problems.append(Problem(f"The swap cannot be checked: {judged.after.reason}",
                                        "This swap cannot be checked against the roster now. Ask your manager."))
         return judged
     preceptors = {row["id"]: row["preceptor"] for row in solve_input["nurses"] if row.get("preceptor")}

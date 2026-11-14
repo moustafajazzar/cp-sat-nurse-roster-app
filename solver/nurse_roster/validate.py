@@ -143,7 +143,7 @@ def _ceil100(v: int) -> int:
 
 # ---- hard ------------------------------------------------------------------------------------
 def _unavailable(c: Ctx) -> list[Match]:
-    return [Match(nu.id, d, 1, f"unavailable: {nu.id} works day {d}")
+    return [Match(nu.id, d, 1, f"unavailable: {nu.id} works {c.p.day_words(d)}")
             for n, nu in enumerate(c.p.nurses) for d in nu.unavailable if c.a[n][d] >= 0]
 
 
@@ -152,7 +152,7 @@ def _allowed_shifts(c: Ctx) -> list[Match]:
     for n, nu in enumerate(c.p.nurses):
         for d, v in enumerate(c.a[n]):
             if v >= 0 and c.shifts[v] not in c.allowed[n]:
-                out.append(Match(nu.id, d, 1, f"shift restriction: {nu.id} works {c.shifts[v]} on day {d}",
+                out.append(Match(nu.id, d, 1, f"shift restriction: {nu.id} works {c.shifts[v]} on {c.p.day_words(d)}",
                                  elapsed=d < c.F))
     return out
 
@@ -164,7 +164,8 @@ def _succession(c: Ctx) -> list[Match]:
         for t in range(max(0, H - 1), len(full) - 1):
             if full[t] >= 0 and full[t + 1] >= 0 and (full[t], full[t + 1]) in c.succ:
                 out.append(Match(nu.id, t + 1 - H, 1,
-                                 f"succession: {nu.id} {c.shifts[full[t]]}->{c.shifts[full[t+1]]} day {t - H}",
+                                 f"succession: {nu.id} {c.shifts[full[t]]} on {c.p.day_words(t - H)} -> "
+                                 f"{c.shifts[full[t+1]]} on {c.p.day_words(t + 1 - H)}",
                                  elapsed=t + 1 - H < c.F))
     return out
 
@@ -188,7 +189,7 @@ def _consecutive(c: Ctx) -> list[Match]:
         for t, v in enumerate(full):
             run = run + 1 if v >= 0 else 0
             if run > K and t >= H:
-                out.append(Match(nu.id, t - H, 1, f"consecutive: {nu.id} {run} shifts in a row at day {t - H}",
+                out.append(Match(nu.id, t - H, 1, f"consecutive: {nu.id} {run} shifts in a row at {c.p.day_words(t - H)}",
                                  elapsed=t - H < c.F))
     return out
 
@@ -206,7 +207,7 @@ def _double_cycle(c: Ctx) -> list[Match]:
             bad = [r for r in range(R) if H <= t + span + r < T and work[t + span + r]] if pat else []
             if bad:
                 out.append(Match(nu.id, t + span - H, 1,
-                                 f"double cycle: {nu.id} needs {R} days off after day {t + span - 1 - H}",
+                                 f"double cycle: {nu.id} needs {R} days off after {c.p.day_words(t + span - 1 - H)}",
                                  elapsed=t + span + max(bad) - H < c.F))   # every worked rest day elapsed
     return out
 
@@ -220,7 +221,7 @@ def _headcount(c: Ctx) -> list[Match]:
             lo, hi = (hc.weekend_min, hc.weekend_max) if p.is_weekend(d) else (hc.weekday_min, hc.weekday_max)
             present = len(_pure(c, ai, d)) + sum(1 for n in c.staff if c.a[n][d] in extra)
             if not lo <= present <= hi:
-                out.append(Match(None, d, 1, f"headcount: day {d} {hc.shift} = {present}, want {lo}..{hi}",
+                out.append(Match(None, d, 1, f"headcount: {c.p.day_words(d)} {hc.shift} = {present}, want {lo}..{hi}",
                                  elapsed=d < c.F, shift=hc.shift, present=present, minimum=lo, maximum=hi))
     return out
 
@@ -230,7 +231,7 @@ def _team_leader(c: Ctx) -> list[Match]:
     for hc in c.p.department.headcounts:
         for d in range(c.D):
             if not any(c.p.nurses[n].team_leader for n in _pure(c, c.idx[hc.shift], d)):
-                out.append(Match(None, d, 1, f"team leader: day {d} {hc.shift} has none", elapsed=d < c.F,
+                out.append(Match(None, d, 1, f"team leader: {c.p.day_words(d)} {hc.shift} has none", elapsed=d < c.F,
                                  shift=hc.shift))
     return out
 
@@ -241,7 +242,7 @@ def _gender(c: Ctx) -> list[Match]:
         for d in range(c.D):
             gs = {c.p.nurses[n].gender for n in _pure(c, c.idx[hc.shift], d)}
             if not {"M", "F"} <= gs:
-                out.append(Match(None, d, 1, f"gender: day {d} {hc.shift} has only {gs}", elapsed=d < c.F,
+                out.append(Match(None, d, 1, f"gender: {c.p.day_words(d)} {hc.shift} has only {gs}", elapsed=d < c.F,
                                  shift=hc.shift))
     return out
 
@@ -256,8 +257,8 @@ def _skill_expired(c: Ctx) -> list[Match]:
         skill, last = expired_required(c.p, nu)[0]
         for d in barred:
             if c.a[n][d] >= 0:
-                out.append(Match(nu.id, d, 1, f"skill expired: {nu.id} works {c.shifts[c.a[n][d]]} on day {d}, "
-                                 f"{skill} is required to work and its last day was {expiry_words(last)}", elapsed=d < c.F))
+                out.append(Match(nu.id, d, 1, f"skill expired: {nu.id} works {c.shifts[c.a[n][d]]} on {c.p.day_words(d)}, "
+                                 f"{skill} is required to work and its last day was {expiry_words(c.p, last)}", elapsed=d < c.F))
     return out
 
 
@@ -273,7 +274,7 @@ def _skill_need(c: Ctx) -> list[Match]:
             have = sum(1 for n in skill_holders(p, k.skill, d) if c.a[n][d] == ai)
             if have < want:
                 out.append(Match(None, d, want - have,
-                                 f"skill need: day {d} {k.shift} has {have} holding {k.skill}, needs {want} "
+                                 f"skill need: {c.p.day_words(d)} {k.shift} has {have} holding {k.skill}, needs {want} "
                                  f"({want - have} short)", elapsed=d < c.F, shift=k.shift))
     return out
 
@@ -296,8 +297,8 @@ def _night_rest(c: Ctx) -> list[Match]:
                 if full[back] == NI:
                     if not (back == t - 1 and (NI, DI) in c.succ):   # direct N->D: succession
                         out.append(Match(nu.id, t - H, 1,
-                                         f"night rest: {nu.id} D day {t - H} has only {rest} "
-                                         f"day(s) off since N day {back - H}, needs {R}",
+                                         f"night rest: {nu.id} D {c.p.day_words(t - H)} has only {rest} "
+                                         f"day(s) off since N {c.p.day_words(back - H)}, needs {R}",
                                          elapsed=t - H < c.F))
                     break
                 rest += full[back] < 0
@@ -305,7 +306,7 @@ def _night_rest(c: Ctx) -> list[Match]:
             else:                                             # neither N nor D met: the memory
                 if back < 0 and rest < owed:                  # before the history still owes
                     out.append(Match(nu.id, t - H, 1,
-                                     f"night rest: {nu.id} D day {t - H} has only {rest} day(s) off, "
+                                     f"night rest: {nu.id} D {c.p.day_words(t - H)} has only {rest} day(s) off, "
                                      f"{owed} still owed to a night before her history",
                                      elapsed=t - H < c.F))
     return out
@@ -463,7 +464,7 @@ def _following(c: Ctx) -> list[Match]:
         followable = [d for d in days if theirs[d] >= 0 and c.shifts[theirs[d]] in c.allowed[n]]
         for d in followable:
             if mine[d] >= 0 and mine[d] != theirs[d]:
-                out.append(Match(nu.id, d, 1, f"following: {nu.id} works {name(mine[d])} on day {d}, her preceptor "
+                out.append(Match(nu.id, d, 1, f"following: {nu.id} works {name(mine[d])} on {c.p.day_words(d)}, her preceptor "
                                               f"{qid} works {name(theirs[d])}"))
         missed = [d for d in followable if mine[d] < 0]
         if missed:
@@ -471,8 +472,8 @@ def _following(c: Ctx) -> list[Match]:
             for d in days:
                 if d not in fset and mine[d] >= 0:
                     doing = f"works {name(theirs[d])}" if theirs[d] >= 0 else "is off"
-                    out.append(Match(nu.id, d, 1, f"following: {nu.id} works {name(mine[d])} on day {d}, when her "
-                                                  f"preceptor {qid} {doing}, while she is off on day {first}, when "
+                    out.append(Match(nu.id, d, 1, f"following: {nu.id} works {name(mine[d])} on {c.p.day_words(d)}, when her "
+                                                  f"preceptor {qid} {doing}, while she is off on {c.p.day_words(first)}, when "
                                                   f"{qid} works {name(theirs[first])}"))
     return out
 
@@ -488,7 +489,7 @@ def _score_deficit(c: Ctx) -> list[Match]:
                 tot = sum(round(p.nurses[n].score * 100) for n in pure)
                 if thr * len(pure) > tot:
                     out.append(Match(None, d, thr * len(pure) - tot,
-                                     f"day {d} {hc.shift}: avg {tot / len(pure) / 100:.2f} under {thr / 100:.2f}"))
+                                     f"{c.p.day_words(d)} {hc.shift}: avg {tot / len(pure) / 100:.2f} under {thr / 100:.2f}"))
     return out
 
 
@@ -506,7 +507,7 @@ def _score_spread(c: Ctx) -> list[Match]:
             band_hi = round((dep.score_band_hi_weekend if p.is_weekend(d) else dep.score_band_hi) * 100)
             if dep.score_balance_mode == "band" and tot > band_hi * len(pure):
                 out.append(Match(None, d, tot - band_hi * len(pure),
-                                 f"day {d} {hc.shift}: avg {tot / len(pure) / 100:.2f} above band {band_hi / 100:.2f}"))
+                                 f"{c.p.day_words(d)} {hc.shift}: avg {tot / len(pure) / 100:.2f} above band {band_hi / 100:.2f}"))
     if dep.score_balance_mode == "spread" and avgs:
         spread = math.ceil(max(avgs) - 1e-9) - math.floor(min(avgs) + 1e-9)
         if spread > 0:
@@ -520,7 +521,7 @@ def _pin(c: Ctx) -> list[Match]:
         for d, want in nu.pinned.items():
             have = c.shifts[c.a[n][d]] if c.a[n][d] >= 0 else ""
             if have != want:
-                out.append(Match(nu.id, d, 1, f"pin: {nu.id} day {d} is {have or 'off'}, pinned {want or 'off'}"))
+                out.append(Match(nu.id, d, 1, f"pin: {nu.id} {c.p.day_words(d)} is {have or 'off'}, pinned {want or 'off'}"))
     return out
 
 
@@ -532,7 +533,7 @@ def _change(c: Ctx) -> list[Match]:
                 continue
             now = c.shifts[c.a[n][d]] if c.a[n][d] >= 0 else ""
             if now != was:
-                out.append(Match(nu.id, d, 1, f"{nu.id}: day {d} {was or 'off'} -> {now or 'off'}"))
+                out.append(Match(nu.id, d, 1, f"{nu.id}: {c.p.day_words(d)} {was or 'off'} -> {now or 'off'}"))
     return out
 
 
@@ -556,7 +557,7 @@ def _preferences(c: Ctx, rid: str, what: str, asked: str) -> list[Match]:
     out = []
     for n, nu in enumerate(c.p.nurses):
         times = preference_factor(nu)
-        out += [Match(nu.id, d, times, f"{nu.id}: {what} day {d} ({asked}{_DOUBLED if times > 1 else ''})")
+        out += [Match(nu.id, d, times, f"{nu.id}: {what} {c.p.day_words(d)} ({asked}{_DOUBLED if times > 1 else ''})")
                 for d in unkept_days(c.p, nu, c.a[n], rid)]
     return out
 

@@ -33,7 +33,7 @@ from rosters.versions import cells_changed, differences
 from solves.api import MonthFilter, SolveProgress, chosen_month, manager, progress_of
 from solves.input import Assembled, assemble, changes_since
 from solves.models import ACTIVE_STATES, Solve, SolveState
-from solves.result import has_a_roster_to_keep, in_dates
+from solves.result import has_a_roster_to_keep
 from units.models import Unit
 from units.scope import HOSPITAL_WIDE, unit_in_scope
 
@@ -192,14 +192,14 @@ def _why_not_edit(roster: Roster, user: User) -> str | None:
     return None
 
 
-def _grid_check(checked: Checked, month: dt.date) -> GridCheck:
+def _grid_check(checked: Checked) -> GridCheck:
     if checked.reason:
-        return GridCheck(reason=in_dates(checked.reason, month), ok=None, violations=[], cost=None)
+        return GridCheck(reason=checked.reason, ok=None, violations=[], cost=None)
     violations = checked.answer["violations"]
     names = full_names(row["nurse"] for row in violations if row["nurse"])
     return GridCheck(reason=None, ok=checked.answer["ok"], cost=checked.answer["cost"],
                      violations=[GridViolation(rule=row["rule"], hospital_id=row["nurse"], full_name=names.get(row["nurse"], ""),
-                                               date=row["date"], text=in_dates(row["text"], month)) for row in violations])
+                                               date=row["date"], text=row["text"]) for row in violations])
 
 
 def _editor(roster: Roster, solve_input: dict, user: User) -> DraftEditor:
@@ -242,7 +242,7 @@ def _draft(roster: Roster, changes: list[dict], checked: Checked | None, user: U
     solve = roster.solve
     edited = roster.grid != in_current_codes(solve.result["roster"])
     # The solve's own cost and its roster's soundness hold only for the month it was given.
-    check = _grid_check(checked, roster.month) if checked else None
+    check = _grid_check(checked) if checked else None
     pins = month_pins(roster.unit, roster.month)
     return Draft(**grid_view(roster.grid, solve).dict(), solve_id=solve.pk, solved_at=timezone.localtime(solve.finished_at),
                  restored_at=timezone.localtime(roster.restored_at) if roster.restored_at else None,
@@ -400,7 +400,7 @@ def check_edits(request: HttpRequest, unit_id: UUID, body: EditsBody) -> DraftCh
     before = scored(solve_input, roster.grid)
     after = scored(with_edits(solve_input, editing, good), editing.grid_after(good))
     delta = after.cost - before.cost if after.cost is not None and before.cost is not None else None
-    return DraftCheck(**_grid_check(after, month).dict(), cost_before=before.cost, delta=delta, refusals=refusals)
+    return DraftCheck(**_grid_check(after).dict(), cost_before=before.cost, delta=delta, refusals=refusals)
 
 
 def _locked_for_edits(request: HttpRequest, unit_id: UUID, month: dt.date, edits: list[Edit]) -> in_force.Held:

@@ -176,7 +176,7 @@ def test_the_cli_says_a_preference_counted_double_and_writes_the_count(tmp_path,
 
     printed = capsys.readouterr().out
     assert "undesired_day 4 = 2 x 2" in printed
-    assert "a: works day 4 (asked off; counts double, a preference was not kept last month)" in printed
+    assert "a: works 2026-06-05 (asked off; counts double, a preference was not kept last month)" in printed
     assert json.loads(out.read_text())["nurses"]["a"]["carry_over"]["preferences_not_kept"] == 1
 
 
