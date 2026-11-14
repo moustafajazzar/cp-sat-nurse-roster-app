@@ -11,8 +11,8 @@ from django.utils import timezone
 from accounts.models import User
 from nurses import membership
 from nurses.models import NurseProfile
+from rosters.checking import Checked
 from rosters.drafts import FROZEN
-from rosters.editing import Checked
 from rosters.models import Decision, Roster, RosterState, RosterVersion, Submission
 from solves.input import MONTH_DATES, Assembled, assemble, changes_since
 from solves.models import ACTIVE_STATES, Solve

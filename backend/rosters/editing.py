@@ -9,7 +9,7 @@ from typing import Literal
 from hospital.models import Shift
 from rosters.cell_words import manager_said
 from rosters.cells import EDIT, MonthCells
-from rosters.checking import Checked, accounted, scored  # noqa: F401  (read from here by the draft's pages)
+from rosters.checking import Checked, scored
 from rosters.drafts import in_current_codes
 from rosters.models import PinEnded, PinnedCell, PinOrigin, Roster
 from rosters.pins import end, long_date, pin_cell
