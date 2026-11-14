@@ -138,7 +138,10 @@ def _cell_problem(month: SwapMonth, new_cell: NewCell, index: int, proposer: Nur
                             f"{name} is on probation in {month.month:%B %Y}, so a swap cannot change their cells.", index)
     shift = month.shift_of(new_cell.shift)
     if new_cell.shift and shift is None:
-        return Problem.said(f"{new_cell.shift} is not one of this unit's shifts.", index)
+        # Asked here, ahead of the cell's other reasons, and said to everyone as the manager reads it: the unit's shifts are
+        # on My roster.
+        not_worked = Reason("shift_not_worked", shift=new_cell.shift)
+        return Problem.said(manager_said(not_worked, name, new_cell.date, month.month, SWAP), index)
     if (shift.code if shift else "") == month.cell(new_cell.hospital_id, new_cell.date):
         whose = "Your" if mine else f"{name}'s"
         what = what_of(shift)
