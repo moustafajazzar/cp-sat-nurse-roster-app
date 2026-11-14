@@ -40,6 +40,14 @@ _Avoid_: Manual change, override
 A cell fixed to a shift or to off, which a solve or re-plan must keep. A pin belongs to whoever caused it (the manager, a request, a swap or a cover) and exists whether or not the month has a roster yet.
 _Avoid_: Lock, fixed cell
 
+**Set aside**:
+Said of a pin that counts for nothing because its cell could not hold it now: its nurse has left the month or the date is outside her dates, or the pin is to a shift she may no longer work or is barred from that day. The pin is not ended, and counts again if the facts come back.
+_Avoid_: Ignored, invalid, suspended
+
+**Bar**:
+What keeps a nurse off every shift from a date on: a skill required to work whose last counted day was the day before. A day off is still hers on a barred day.
+_Avoid_: Block, restriction, expiry (the last day a skill counts, which a bar follows)
+
 ### What a roster breaks
 
 **Violation**:
