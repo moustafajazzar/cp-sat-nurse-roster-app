@@ -31,12 +31,12 @@ from hospital.models import LeaveType
 from notifications import sending
 from nurses import membership
 from nurses.api import Body, MonthText, with_units
+from nurses.leave import TakenOff, take_off_for_leave
 from nurses.models import Leave, NurseProfile
 from requesting.deciding import replaced_by_leave
 from requesting.models import Request, Step
 from rosters.models import Roster
 from rosters.pins import end_for_leave
-from rosters.versions import TakenOff, take_off_for_leave
 from units.models import Unit
 from units.scope import unit_in_scope
 
@@ -289,10 +289,8 @@ class _Begun:
     requests_replaced: list[Request] = field(default_factory=list)
 
     def notify_nurses(self, user: User) -> None:
-        """Tells the unit's nurses of each version made, and the nurse of each accepted request of theirs the leave replaced.
-        Call it after the leave's audit entry, as every change tells after its own."""
-        for taken in self.taken_off:
-            sending.roster_changed(taken.roster.unit, taken.roster.month, user)
+        """Tells the nurse of each accepted request of theirs the leave replaced. The unit's nurses were told of each version
+        as it was made. Call it after the leave's audit entry, as every change tells after its own."""
         for replaced in self.requests_replaced:
             sending.request_decided(replaced, Step.REPLACED_BY_LEAVE, user)
 
@@ -305,8 +303,9 @@ class _Begun:
 
 def _begin(nurse: NurseProfile, unit: Unit, leave_type: LeaveType, days: list[dt.date], user: User) -> _Begun:
     """Every write that adds a date comes through here, so here is where leave wins over a pin, and over a shift on an approved
-    roster (`rosters.versions.take_off_for_leave`). Leave's own audit entry stays as it is, whoever recorded it: an entry of the
-    pin's or of the version's beside it would tell the System Admin the month of this leave."""
+    roster (`take_off_for_leave`). Leave's own audit entry stays as it is, whoever recorded it: an entry of the pin's or of the version's
+    beside it would tell the System Admin the month of this leave. Record it before this, as the unit's nurses are told of
+    each version here."""
     Leave.objects.bulk_create([Leave(nurse=nurse, date=day, leave_type=leave_type, recorded_by=user) for day in days])
     ended = sorted(end_for_leave(nurse, days, user), key=lambda pin: pin.date)
     replaced = replaced_by_leave(nurse, days, ended, user)
@@ -357,8 +356,8 @@ def record_leave(request: HttpRequest, unit_id: UUID, body: NewLeaveBody) -> Sta
         unit, nurse = _nurse_to_record(request.user, unit_id, body.nurse_id)
         leave_type = _chosen_type(body.leave_type_id)
         _refuse_dates(nurse, unit, body.first, body.last)
-        begun = _begin(nurse, unit, leave_type, _days(body.first, body.last), request.user)
         record("leave.recorded", actor=request.user, target=nurse.user.username, request=request)
+        begun = _begin(nurse, unit, leave_type, _days(body.first, body.last), request.user)
         begun.notify_nurses(request.user)
         return Status(201, SavedLeave(**_as_saved(nurse, body.first, body.last).dict(), pins_removed=begun.pins_removed,
                                       shifts_taken_off=begun.shifts_taken_off))
@@ -377,8 +376,8 @@ def change_leave(request: HttpRequest, unit_id: UUID, body: LeaveChangeBody) -> 
         begun = _Begun([], [])
         if ended or wanted - kept:
             _end(ended, request.user)
-            begun = _begin(nurse, unit, leave_type, sorted(wanted - kept), request.user)
             record("leave.changed", actor=request.user, target=nurse.user.username, request=request)
+            begun = _begin(nurse, unit, leave_type, sorted(wanted - kept), request.user)
             begun.notify_nurses(request.user)
         return SavedLeave(**_as_saved(nurse, body.first, body.last).dict(), pins_removed=begun.pins_removed,
                           shifts_taken_off=begun.shifts_taken_off)

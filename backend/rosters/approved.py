@@ -18,7 +18,7 @@ from rosters.versions import Grid
 
 
 @dataclass(frozen=True)
-class Change:
+class NewCell:
     """One cell asked for: a nurse's date and what it should hold, a shift's code or None for a day off."""
     hospital_id: str
     date: dt.date
@@ -49,24 +49,24 @@ class ApprovedMonth:
     def shift_of(self, code: str | None) -> Shift | None:
         return self.shifts.get(current_code(code)) if code else None
 
-    def grid_after(self, changes: list[Change]) -> Grid:
+    def grid_after(self, new_cells: list[NewCell]) -> Grid:
         grid = copy.deepcopy(self.roster.grid)
-        for change in changes:
-            shift = self.shift_of(change.shift)
-            grid[change.hospital_id][change.day] = shift.code if shift else ""
+        for new_cell in new_cells:
+            shift = self.shift_of(new_cell.shift)
+            grid[new_cell.hospital_id][new_cell.day] = shift.code if shift else ""
         return grid
 
 
-def with_pins(solve_input: dict, month: ApprovedMonth, changes: list[Change]) -> dict:
+def with_pins(solve_input: dict, month: ApprovedMonth, new_cells: list[NewCell]) -> dict:
     """The input as the change would make it: each changed cell a pin, so the solver's `pin` rule holds the new cell, and a
     manager's pin there, which the change replaces, does not count against it."""
     edited = copy.deepcopy(solve_input)
     rows = {row["id"]: row for row in edited["nurses"]}
-    for change in changes:
-        row = rows.get(change.hospital_id)
+    for new_cell in new_cells:
+        row = rows.get(new_cell.hospital_id)
         if row is not None:
-            shift = month.shift_of(change.shift)
-            row.setdefault("pinned", {})[change.day] = shift.code if shift else ""
+            shift = month.shift_of(new_cell.shift)
+            row.setdefault("pinned", {})[new_cell.day] = shift.code if shift else ""
     return edited
 
 

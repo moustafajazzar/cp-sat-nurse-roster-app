@@ -362,9 +362,9 @@ class TestWhatTheProposerMayNotLearn:
     @staticmethod
     def the_manager_reads_why(mona, unit, words, shift):
         """The same change, judged for the manager, says it in full."""
-        from swaps.judging import Change, judge
-        judged = judge(Roster.objects.get(), [Change("Badr", dt.date(2026, 6, 9), None),
-                                             Change("Emad", dt.date(2026, 6, 9), shift)], None)
+        from swaps.judging import NewCell, judge
+        judged = judge(Roster.objects.get(), [NewCell("Badr", dt.date(2026, 6, 9), None),
+                                             NewCell("Emad", dt.date(2026, 6, 9), shift)], None)
         assert any(words in problem.manager for problem in judged.problems), [p.manager for p in judged.problems]
 
     @pytest.mark.parametrize("on_leave", [False, True], ids=["a day off", "leave"])
@@ -590,6 +590,36 @@ class TestTheManagersDecision:
         entry = AuditEntry.objects.get(action="roster.changed")
         assert entry.after == {"version": 2, "pins": 2, "cells": 2}
         assert mine(nurse("Emad"))[0]["reason"] == "Fine by me."
+
+    def test_approval_is_audited_as_the_swaps_step_then_the_roster_change_both_from_the_managers_address(
+            self, in_force, nurse, mona):
+        swap = awaiting(nurse)
+
+        decided(mona, in_force, swap["id"], "approve")
+
+        entries = list(AuditEntry.objects.filter(action__in=("swap.approved", "roster.changed")).order_by("id"))
+        assert [(entry.action, entry.actor.username, entry.target) for entry in entries] == [
+            ("swap.approved", "mona", "Badr"), ("roster.changed", "mona", "ER, 2026-06")]
+        assert [entry.ip for entry in entries] == ["127.0.0.1", "127.0.0.1"]
+
+    def test_a_swap_that_would_change_no_cell_is_refused_with_nothing_saved(self, in_force, nurse, mona, monkeypatch):
+        """Judging refuses a cell already holding its change, so only a judge that let one through could reach this."""
+        from types import SimpleNamespace
+
+        from swaps import steps
+        from swaps.models import SwapCell
+        swap = awaiting(nurse)
+        for swap_cell in SwapCell.objects.filter(swap_id=swap["id"]):
+            swap_cell.after = swap_cell.before
+            swap_cell.save(update_fields=["after"])
+        monkeypatch.setattr(steps, "judge", lambda *args, **kwargs: SimpleNamespace(problems=[]))
+
+        assert refusals(decide(mona, in_force, swap["id"], "approve"), 409) == [
+            "This swap would change no cell of the roster in force, so there is nothing to approve."]
+        assert Swap.objects.get().state == SwapState.AWAITING_MANAGER
+        assert RosterVersion.objects.filter(roster__unit=in_force).count() == 1
+        assert not PinnedCell.objects.filter(origin=PinOrigin.SWAP).exists()
+        assert not AuditEntry.objects.filter(action__in=("swap.approved", "roster.changed")).exists()
 
     def test_approval_replaces_a_managers_pin_and_says_so_first(self, mona, carla, er, solver, nurse):
         solved(mona, er, solver)

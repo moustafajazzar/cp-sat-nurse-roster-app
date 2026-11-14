@@ -15,6 +15,8 @@ from notifications.models import Notification
 from notifications.tests.test_events import as_user, told
 from nurses.models import NurseProfile, Placement
 from nurses.tests.conftest import make_unit
+from nurses import membership
+from requesting import deciding
 from requesting.deciding import MONTH_OVER
 from requesting.making import NO_CAP
 from requesting.models import RequestWindow
@@ -714,6 +716,62 @@ class TestAfterApproval:
         assert decided(mona, er, made["id"], "cancel", reason="Not needed.")["version"] is None
         assert roster(er).versions.count() == 3
         assert roster(er).grid["Amal"]["2026-06-03"] == "D"
+
+    def test_accepting_a_change_to_a_cell_writes_the_roster_change_entry_after_its_own_as_a_swap_does(self, mona, carla, er,
+                                                                                                      solver):
+        approved(mona, carla, er, solver)
+        opened(mona, er)
+        made = asked(as_user("Amal"), 3)
+
+        decided(mona, er, made["id"], "accept")
+
+        entries = [(entry.action, entry.actor.username, entry.target, entry.after)
+                   for entry in AuditEntry.objects.order_by("id")][-2:]
+        assert entries == [("request.accepted", "mona", "Amal", None),
+                           ("roster.changed", "mona", "ER, 2026-06", {"version": 2, "pins": 1, "cells": 1})]
+        assert AuditEntry.objects.get(action="roster.changed").ip is not None
+
+    def test_a_month_that_ends_while_a_request_is_accepted_still_takes_its_change(self, mona, carla, er, solver, monkeypatch):
+        """Midnight of the month's last day falls after the decision was judged and before the roster changes."""
+        approved(mona, carla, er, solver)
+        opened(mona, er)
+        made = asked(as_user("Amal"), 3)
+        pin_cell = deciding.pin_cell
+
+        def pin_then_midnight(*args, **kwargs):
+            pin = pin_cell(*args, **kwargs)
+            monkeypatch.setattr(membership, "today", lambda: dt.date(2026, 7, 1))
+            return pin
+
+        monkeypatch.setattr(deciding, "pin_cell", pin_then_midnight)
+
+        assert decided(mona, er, made["id"], "accept")["version"] == 2
+        assert roster(er).grid["Amal"]["2026-06-03"] == ""
+
+    def test_editing_one_that_changes_a_cell_writes_it_too_and_what_changes_nothing_writes_none(self, mona, carla, er, solver):
+        """Amal is off on the 5th already."""
+        approved(mona, carla, er, solver)
+        opened(mona, er)
+        made = asked(as_user("Amal"), 3)
+        decided(mona, er, made["id"], "accept")
+        decided(mona, er, asked(as_user("Amal"), 5)["id"], "accept")
+
+        decided(mona, er, made["id"], "edit", shift="D", reason="Day instead.")
+
+        assert list(AuditEntry.objects.filter(action="roster.changed").order_by("id").values_list("after", flat=True)) == [
+            {"version": 2, "pins": 1, "cells": 1}, {"version": 3, "pins": 1, "cells": 1}]
+
+    def test_a_nurse_who_joined_after_the_solve_has_no_row_so_only_her_pin_is_made(self, mona, carla, er, solver, make_user):
+        approved(mona, carla, er, solver)
+        nurse_in(er, make_user, "Faris")
+        opened(mona, er)
+
+        answer = decided(mona, er, asked(as_user("Faris"), 3)["id"], "accept")
+
+        assert answer["version"] is None and roster(er).versions.count() == 1
+        assert "Faris" not in roster(er).grid
+        assert (current_pin("Faris", 3).code, current_pin("Faris", 3).origin) == ("", PinOrigin.REQUEST)
+        assert not AuditEntry.objects.filter(action="roster.changed").exists()
 
     def test_the_managers_editor_refuses_a_requests_pin(self, mona, carla, er, solver):
         approved(mona, carla, er, solver)

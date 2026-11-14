@@ -3,12 +3,12 @@ withdrawn by the manager. Every write about a cover stores an expiry its date ma
 refusal keeps it (`covers.expiring.expire_passed`, called by the endpoints). Each refusal, then the write, the audit entry
 and whoever is told; call each inside a transaction.
 
-Locks, in the order every write takes them: the catalogue's, the nurses' `FOR NO KEY UPDATE`,
-the unit's, the roster's, then the cover's. An acceptance makes a pin and a version, so it takes them all, as a swap's approval
-does, and no leave write or version passes between its check and its write. An offer, a decline and a withdrawal change nothing
-on the roster and take the cover's row lock alone, which nothing holds while waiting on another lock, so none of them waits in a
-circle. The rows they write refer to nurses and users, whose locks are all `FOR NO KEY UPDATE`, so the checks of those foreign
-keys at commit wait on nothing.
+An acceptance changes the roster in force, so it holds the unit's month as every such change does (`rosters.in_force.hold`)
+and then locks the cover's row, and no leave write or version passes between its check and its write; its version goes in force
+through `rosters.in_force.change`, which tells the unit's nurses and writes the roster-change entry. An offer, a decline and a
+withdrawal change nothing on the roster and take the cover's row lock alone, which nothing holds while waiting on another lock,
+so none of them waits in a circle. The rows they write refer to nurses and users, whose locks are all `FOR NO KEY UPDATE`, so the
+checks of those foreign keys at commit wait on nothing.
 
 The audit log says a cover moved and by whom: `cover.offered` and `cover.withdrawn` (the manager, the unit as target),
 `cover.accepted` and `cover.declined` (the nurse, her hospital ID as target), never its date, shift or note."""
@@ -23,15 +23,14 @@ from ninja.errors import HttpError
 from accounts.models import User
 from audit.log import record
 from hospital.api import refuse
-from hospital.models import HospitalSettings
 from notifications import sending
 from notifications.sending import CoverStep
 from nurses.models import NurseProfile
-from rosters.approved import Change
-from rosters.models import PinOrigin, Roster, VersionOrigin
+from rosters import in_force
+from rosters.approved import NewCell
+from rosters.models import PinOrigin
 from rosters.pins import long_date, pin_cell
 from rosters.review import name_of
-from rosters.versions import make_version
 from units.models import Unit
 
 from covers.expiring import state_now
@@ -40,6 +39,7 @@ from covers.models import WAITING, Answer, Cover, CoverOffer, CoverState
 
 NOT_OFFERED = "You have been offered no such cover."
 NOT_IN_UNIT = "There is no such cover in your unit."
+NO_CELL_CHANGED = "Your cell already holds this cover's shift, so there is nothing to take."
 
 # How a cover no longer waiting reads to the manager, and to a nurse offered it: never why it was short or who took it.
 MANAGERS_WORDS = {
@@ -150,42 +150,44 @@ def decline(user: User, cover_id: UUID, request: HttpRequest) -> Cover:
 
 
 def accept(user: User, cover_id: UUID, request: HttpRequest) -> Cover:
-    """The first acceptance takes it, under the locks an approval takes in their order: the date read first, then the state,
-    then judged again for her alone on the month as it stands and refused in her own words (`CoverMonth.refusal_for`), the
-    cover staying offered. Then her cell a pin of origin `cover`, replacing any pin she held that day, in a new version of origin
-    `cover`, in force at once; the unit's nurses told the roster changed, the others offered it told it is taken, and the
-    manager that she accepted. Its version fills no other cover (`covers.expiring`)."""
+    """The first acceptance takes it, with the cover's month held for her (`rosters.in_force.hold`): the date read first, then
+    the state, then judged again for her alone on the month as it stands and refused in her own words
+    (`CoverMonth.refusal_for`), the cover staying offered. Then her cell a pin of origin `cover`, replacing any pin she held that
+    day, in a change of origin `cover` to the roster in force, which tells the unit's nurses; the others offered it are told it
+    is taken, and the manager that she accepted. Its version fills no other cover (`covers.expiring`). No scope is checked: the
+    offer to her is her scope. A cover's unit and month never change, so they are read before the hold."""
     found = (CoverOffer.objects.filter(cover_id=cover_id, nurse__user=user)
-             .values_list("cover__unit_id", "cover__roster_id").first())
+             .values_list("cover__unit_id", "cover__roster__month").first())
     if found is None:
         raise Http404(NOT_OFFERED)
-    unit_id, roster_id = found
-    HospitalSettings.load(for_update=True)
-    nurse = (NurseProfile.objects.select_for_update(of=("self", "user"), no_key=True).select_related("user")
-             .get(user=user))
-    unit = Unit.objects.select_for_update(of=("self",)).select_related("manager").get(pk=unit_id)
-    roster = Roster.objects.select_for_update(of=("self",)).select_related("unit").get(pk=roster_id)
+    unit_id, month = found
+    held = in_force.hold(unit_id, month, nurses={user.username})
+    unit, roster = held.unit, held.roster
+    nurse = NurseProfile.objects.select_related("user").get(user=user)
     cover = _locked({"pk": cover_id, "offers__nurse__user": user}, NOT_OFFERED)
     mine = cover.offers.get(nurse__user=user)
     refusal = _why_not_answer(cover, mine, "you can no longer take it")
     if refusal:
         raise HttpError(409, refusal)
-    month = CoverMonth(roster, cover.date, cover.shift)
-    said = month.refusal_for(user.username)
+    said = CoverMonth(roster, cover.date, cover.shift).refusal_for(user.username)
     if said:
         raise HttpError(409, " ".join(said))
     now = timezone.now()
     mine.answer, mine.answered_at = Answer.ACCEPTED, now
     mine.save(update_fields=["answer", "answered_at"])
     pin_cell(unit, nurse, cover.date, cover.shift, PinOrigin.COVER, user)
-    grid = month.grid_after([Change(user.username, cover.date, cover.shift.code)])
-    version = make_version(roster, grid, VersionOrigin.COVER, user, f"Cover taken by {name_of(user)}: {which(cover)}.")
+    # The cover's own entry first, then the roster-change entry the change writes.
+    record("cover.accepted", actor=user, target=user.username, request=request)
+    try:
+        version = in_force.change(held, [NewCell(user.username, cover.date, cover.shift.code)], origin=in_force.Origin.COVER,
+                                  by=user, reason=f"Cover taken by {name_of(user)}: {which(cover)}.", pins=1, request=request)
+    except in_force.Refused as refused:
+        raise HttpError(409, str(refused)) from None
+    if version is in_force.UNCHANGED:
+        # Raised inside the transaction, so her answer, her pin and the entry go with it.
+        raise HttpError(409, NO_CELL_CHANGED)
     cover.state, cover.taker, cover.made_version, cover.ended_at = CoverState.TAKEN, nurse, version, now
     cover.save(update_fields=["state", "taker", "made_version", "ended_at"])
-    record("cover.accepted", actor=user, target=user.username, request=request)
-    record("roster.changed", actor=user, target=roster.audit_target, request=request,
-           after={"version": version.number, "pins": 1, "cells": 1})
-    sending.roster_changed(unit, roster.month, user)
     sending.cover_step(cover, CoverStep.TAKEN, user)
     sending.cover_step(cover, CoverStep.ACCEPTED, user)
     return cover

@@ -79,7 +79,18 @@ class DraftEdits:
         return grid
 
     def save(self, edits: list[Edit], by) -> tuple[int, int]:
-        """How many pins and how many of the grid's cells this changed. Takes no lock of its own: see `rosters.api.save_pins`."""
+        """A draft's: the pins and the grid. How many pins and how many of the grid's cells this changed. Takes no lock of its
+        own: see `rosters.api.save_pins`."""
+        changed = self.save_pins(edits, by)
+        grid = self.grid_after(edits)
+        cells = sum(grid[nurse][day] != code for nurse, row in self.roster.grid.items() for day, code in row.items())
+        self.roster.grid = grid
+        self.roster.save(update_fields=["grid"])  # `updated_at` stays: see its help text.
+        return changed, cells
+
+    def save_pins(self, edits: list[Edit], by) -> int:
+        """The pins alone, as the roster in force needs them, whose grid only a change writes (`rosters.in_force`). How many pins
+        this made or ended."""
         changed = 0
         for edit in edits:
             pin = self.pins.get((edit.hospital_id, edit.date))
@@ -91,11 +102,7 @@ class DraftEdits:
             elif edit.action != "clear":
                 pin_cell(self.roster.unit, self.nurses[edit.hospital_id], edit.date, wanted, PinOrigin.MANAGER, by)
             changed += edit.action != "clear" or pin is not None
-        grid = self.grid_after(edits)
-        cells = sum(grid[nurse][day] != code for nurse, row in self.roster.grid.items() for day, code in row.items())
-        self.roster.grid = grid
-        self.roster.save(update_fields=["grid"])  # `updated_at` stays: see its help text.
-        return changed, cells
+        return changed
 
 
 @dataclass

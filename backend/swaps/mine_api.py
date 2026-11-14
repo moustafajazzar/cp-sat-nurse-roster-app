@@ -23,12 +23,13 @@ from nurses import membership, probation
 from nurses.api import MonthText
 from nurses.models import NurseProfile
 from rosters.grids import GridDay, by_name, full_names
+from rosters.in_force import MONTH_OVER
 from rosters.reading_api import MyRosterFilter, in_force
 from rosters.review import name_of
 from rosters.sheets import days_of
 from swaps import steps
 from swaps.expiring import state_now
-from swaps.judging import Change, on_probation_said
+from swaps.judging import NewCell, on_probation_said
 from swaps.models import Swap
 
 router = Router(tags=["swaps"])
@@ -152,7 +153,7 @@ def composer(request: HttpRequest, filters: Query[MyRosterFilter]) -> SwapCompos
         answer.refusal = f"You are on no unit's roster for {found.month:%B %Y}."
         return answer
     if found.month < found.first:
-        answer.refusal = steps.MONTH_OVER
+        answer.refusal = MONTH_OVER
         return answer
     if found.version is None:
         answer.refusal = steps.no_approved_roster(found.unit, found.month)
@@ -160,7 +161,7 @@ def composer(request: HttpRequest, filters: Query[MyRosterFilter]) -> SwapCompos
     today = membership.today()
     days = [day for day in days_of(found.month) if day.date >= today]
     if not days:
-        answer.refusal = steps.MONTH_OVER
+        answer.refusal = MONTH_OVER
         return answer
     grid = found.roster.grid
     me = found.nurse.user.username
@@ -193,7 +194,7 @@ class ProposeSwapBody(StrictSchema):
     note: str = Field("", max_length=500, description="Optional. Everyone in the swap and the unit's manager read it.")
 
 
-def _changes(body: ProposeSwapBody) -> list[Change]:
+def _new_cells(body: ProposeSwapBody) -> list[NewCell]:
     """Whatever the roster holds, these could never be meant."""
     wrong, seen = [], set()
     for index, cell in enumerate(body.cells):
@@ -204,7 +205,7 @@ def _changes(body: ProposeSwapBody) -> list[Change]:
         seen.add((cell.hospital_id, cell.date))
     if wrong:
         refuse(*wrong)
-    return [Change(cell.hospital_id, cell.date, cell.shift or None) for cell in body.cells]
+    return [NewCell(cell.hospital_id, cell.date, cell.shift or None) for cell in body.cells]
 
 
 def _answer_row(request: HttpRequest, swap_id: UUID) -> MySwapRow:
@@ -216,9 +217,9 @@ def propose_swap(request: HttpRequest, body: ProposeSwapBody) -> Status:
     """On the approved roster of the unit the month falls under for you, cells of today or later, at least one of them yours.
     Refused with 422 and every reason, each on its cell when it is about one: a reason that rests on a colleague says only that
     the swap cannot work for them on that date. Each colleague whose cells change is told; with none, the manager is."""
-    changes = _changes(body)
+    new_cells = _new_cells(body)
     with transaction.atomic():
-        swap = steps.propose(request.user, dt.date.fromisoformat(f"{body.month}-01"), changes, body.note.strip(), request)
+        swap = steps.propose(request.user, dt.date.fromisoformat(f"{body.month}-01"), new_cells, body.note.strip(), request)
     return Status(201, _answer_row(request, swap.pk))
 
 

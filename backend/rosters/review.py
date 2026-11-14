@@ -13,8 +13,7 @@ from nurses import membership
 from nurses.models import NurseProfile
 from rosters.drafts import FROZEN
 from rosters.editing import Checked
-from rosters.models import Decision, Roster, RosterState, RosterVersion, Submission, VersionOrigin
-from rosters.versions import make_version
+from rosters.models import Decision, Roster, RosterState, RosterVersion, Submission
 from solves.input import MONTH_DATES, Assembled, assemble, changes_since
 from solves.models import ACTIVE_STATES, Solve
 from units.models import Unit
@@ -103,15 +102,15 @@ def approval(roster: Roster) -> Submission | None:
     return roster.submissions.filter(decision=Decision.APPROVED).select_related("decided_by").first()
 
 
-def lock_the_months_nurses(unit: Unit, month: dt.date, roster: Roster | None) -> None:
+def lock_the_months_nurses(unit: Unit, month: dt.date, roster: Roster | None) -> list[NurseProfile]:
     """Every nurse leave could be recorded for in this month, under the lock a leave write takes (the user and the profile), so
     that none lands between checking a roster and submitting or approving it. Take it after the catalogue's and before the
     unit's."""
     in_grid = list(roster.grid) if roster else []
     ids = set(membership.placed_in(unit, month).values_list("pk", flat=True))
     ids |= set(NurseProfile.objects.filter(user__username__in=in_grid).values_list("pk", flat=True))
-    list(NurseProfile.objects.select_for_update(of=("self", "user"), no_key=True).select_related("user")
-         .filter(pk__in=ids).order_by("pk"))
+    return list(NurseProfile.objects.select_for_update(of=("self", "user"), no_key=True).select_related("user")
+                .filter(pk__in=ids).order_by("pk"))
 
 
 MONTH_AT_SUBMIT_KEYS = ("id", "gender", "leave", "pinned", "on_probation", "preceptor")
@@ -146,12 +145,14 @@ def _decide(roster: Roster, decision: Decision, by: User, comment: str = "") -> 
 
 
 def approve(roster: Roster, by: User) -> RosterVersion:
-    """The first approval makes version 1, with origin `solve` as section 4 has it, and the solve the grid came from. The grid is
-    the roster's as approved, hand edits and all."""
+    """The first approval makes version 1 (`rosters.in_force.first_version`). It is no change to a roster in force: none was in
+    force to change, so no swap or cover waits on it, and its nurses are told it was approved, not changed."""
+    from rosters.in_force import first_version  # That module holds a month through this one, so not at the top.
+
     _decide(roster, Decision.APPROVED, by)
     roster.state = RosterState.APPROVED
     roster.save(update_fields=["state"])
-    return make_version(roster, roster.grid, VersionOrigin.SOLVE, by, solve=roster.solve)
+    return first_version(roster, by)
 
 
 def reject(roster: Roster, by: User, comment: str) -> Submission:

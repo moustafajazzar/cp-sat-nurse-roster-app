@@ -15,6 +15,9 @@ from notifications.models import Event, Notification, SolveOutcome
 from nurses import membership
 from hospital.models import HospitalSettings, Shift
 from nurses.models import Placement
+from rosters.approved import NewCell
+from rosters.in_force import Origin, hold
+from rosters.in_force import change as change_in_force
 from rosters.drafts import FROZEN
 from rosters.models import PinnedCell, PinOrigin, Roster, RosterState, VersionOrigin
 from solves.replans import A_DRAFT, ACTIVE, MONTH_OVER, NO_ROSTER_YET
@@ -384,6 +387,8 @@ class TestFactsBeforeTheDate:
         assert set(solve.input["published"]["Faris"].values()) == {""}
         assert facts(solve.input)["Faris"] == dict.fromkeys(range(11), "")
         assert "Amal" not in roster(er).grid and solve.replan_outcome == ReplanOutcome.VERSION
+        assert set(roster(er).grid) == {"Badr", "Dana", "Emad", "Faris"} and set(roster(er).grid["Faris"].values()) == {""}
+        in_force_agrees(er)
 
 
 def moved(**cells) -> dict:
@@ -516,9 +521,12 @@ class TestAChangeWhileItWaitsOrRuns:
         assert Notification.objects.filter(event=Event.ROSTER_CHANGED).count() == len(NURSES)
 
     def test_any_new_version_leaves_its_roster_out_even_with_no_pin_or_leave(self, mona, er, solver, in_force):
-        """Every change today makes a pin or leave too; a version is what a later kind of change (a swap) is sure to make."""
-        from rosters.versions import make_version
-        while_it_runs(solver, lambda: make_version(roster(er), moved(Badr_20=""), VersionOrigin.SWAP, User.objects.get(username="mona")))
+        """A change that leaves neither a pin nor leave behind, which only its version tells apart from the re-plan's start."""
+        def a_change_with_nothing_else():
+            held = hold(er.pk, dt.date(2026, 6, 1), nurses={"Badr"})
+            return change_in_force(held, [NewCell("Badr", dt.date(2026, 6, 20), "D")], origin=Origin.SWAP,
+                                   by=User.objects.get(username="mona"), reason="A swap.", pins=0)
+        while_it_runs(solver, a_change_with_nothing_else)
 
         solve = replanned(mona, er, solver, *under_way(SWAPPED))
 

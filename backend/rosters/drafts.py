@@ -30,8 +30,8 @@ FROZEN = {
 def why_frozen(roster: Roster | None) -> str | None:
     """The one place a submitted or an approved roster refuses a solve's start and end and a restore. A submitted one refuses a
     save of pins too (`rosters.api._why_not_edit`); an approved one is edited by hand, each save a new version
-    (`rosters.versions`), and a re-plan passes this on purpose (`solves.replans`). A rename is not a change: the grid follows it whatever the state. Hold the
-    unit's lock, which a submit and a decision take, when this decides a write."""
+    (`rosters.in_force.change`), and a re-plan passes this on purpose (`solves.replans`). A rename is not a change: the grid
+    follows it whatever the state. Hold the unit's lock, which a submit and a decision take, when this decides a write."""
     return FROZEN.get(roster.state) if roster is not None else None
 
 
@@ -111,7 +111,7 @@ def _shift_changed_since(solve: Solve) -> str | None:
 def carry_rename_through_grids(old_code: str, new_code: str) -> None:
     """Call it under the catalogue's lock. A stored input and result stay what they were, as does a roster version. A submitted or
     approved grid follows too: a rename is the same shift, so nothing the approver decides on changes."""
-    # By month, then unit: the order leave over two approved months locks them in (`rosters.versions.take_off_for_leave`), so
+    # By month, then unit: the order leave over two approved months locks them in (`rosters.in_force.hold_for_leave`), so
     # a rename and such a leave never wait on each other both ways.
     rosters = [roster for roster in Roster.objects.select_for_update().order_by("month", "unit_id") if _uses(roster, old_code)]
     for roster in rosters:

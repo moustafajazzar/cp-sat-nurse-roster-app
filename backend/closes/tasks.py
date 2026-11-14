@@ -43,8 +43,8 @@ def project_carry_over(unit_id: str, month: str) -> None:
 
 
 def project(unit: Unit, month: dt.date) -> None:
-    """On demand: after anything that changes an approved roster's month (`rosters.versions.make_version`) or the close before it.
-    One waits at a time for a unit's month."""
+    """On demand: after anything that changes an approved roster's month (each of its versions) or the close before it. One
+    waits at a time for a unit's month."""
     enqueue_once(project_carry_over, f"project_carry_over:{unit.pk}:{month:%Y-%m}", unit_id=str(unit.pk),
                  month=month.isoformat())
 
