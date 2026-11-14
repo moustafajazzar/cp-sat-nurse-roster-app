@@ -35,7 +35,7 @@ from accounts.models import Role
 from hospital.models import Shift
 from nurses.models import NurseProfile
 from rosters.cell_words import bar_said
-from rosters.cells import COVER, PRIVATE, SHOWN, MonthCells, NewCell, reader_of
+from rosters.cells import COVER, PRIVATE, SHOWN, MonthCells, NewCell, Reason, reader_of
 from rosters.checking import Checked, accounted
 from rosters.models import Roster
 from rosters.pins import long_date
@@ -100,10 +100,6 @@ class CoverMonth:
         self.on_grid = {nurse.user.username: nurse for nurse in on_grid}
 
     @property
-    def input(self) -> dict:
-        return self.cells.solve_input
-
-    @property
     def before(self) -> Checked:
         """The roster in force's check with the solver's own code, on the month as it stands."""
         return self.cells.checked(self.roster.grid)
@@ -115,39 +111,43 @@ class CoverMonth:
         """Why this nurse could not take the cover before her grid is checked, as a key worded for her: `not_on_grid`,
         `not_staff`, `works`, `not_in_month`, `outside_dates`, `leave`, `on_probation`, `barred`, `shift_not_allowed` or
         `request`."""
+        return self._excluded(hospital_id)[0]
+
+    def _excluded(self, hospital_id: str) -> tuple[str | None, Reason | None]:
+        """`exclusion`'s key, with the cell judgement's reason behind it when there is one, so that its words read the bar from
+        the one answer."""
         nurse = self.on_grid.get(hospital_id)
         if hospital_id not in self.roster.grid or nurse is None:
-            return "not_on_grid"
+            return "not_on_grid", None
         if nurse.user.role != Role.STAFF_NURSE:
-            return "not_staff"
+            return "not_staff", None
         if self.cell(hospital_id, self.day):
-            return "works"
+            return "works", None
         # Whether she is there that day at all is asked first, as of a day off, so that a nurse on probation who is also on
         # leave reads of her leave.
         absent = self.cells.cannot_hold(hospital_id, self.day, None)
         if absent is not None:
-            return absent.why
+            return absent.why, absent
         if hospital_id in self.cells.on_probation:
-            return "on_probation"  # She fills no gap: a shift is fully staffed without her.
+            return "on_probation", None  # She fills no gap: a shift is fully staffed without her.
         reason = self.cells.may_hold(hospital_id, self.day, COVER, self.shift).reason
         if reason is None:
-            return None
+            return None, None
         if reason.why == "held":
-            return reason.origin  # A request's: the one pin that does not yield to a cover.
+            return reason.origin.value, reason  # A request's: the one pin that does not yield to a cover.
         # The cover's own shift is one the unit works, so anything but the bar is her allowed shifts.
-        return "barred" if reason.why == "barred" else "shift_not_allowed"
+        return ("barred" if reason.why == "barred" else "shift_not_allowed"), reason
 
     def refusal_for(self, hospital_id: str) -> list[str]:
         """Why she cannot take it now, in her own words: nothing when she can."""
         on = long_date(self.day)
-        why = self.exclusion(hospital_id)
+        why, reason = self._excluded(hospital_id)
         if why == "works":
             held = self.cells.shift(self.cell(hospital_id, self.day))
             what = f"{held.display_name} ({held.code})" if held else self.cell(hospital_id, self.day)
             return [f"You already work {what} on {on}, so you cannot take this cover."]
         if why == "barred":
-            bar = self.cells.cannot_hold(hospital_id, self.day, self.shift)
-            return [f"{bar_said(bar, 'Your')}, so you cannot take this cover."]
+            return [f"{bar_said(reason, 'Your')}, so you cannot take this cover."]
         if why is not None:
             return [{
                 "not_on_grid": f"You have no row on the {self.unit.name} roster for {self.month:%B %Y}, so you cannot take "
@@ -185,12 +185,12 @@ class CoverMonth:
 
     def full(self) -> str | None:
         """Why one more nurse cannot help, when the shift-day is already at its maximum headcount."""
-        problem = load_request(self.input).problem
+        problem = load_request(self.cells.solve_input).problem
         if not problem.department.headcount_enabled:
             return None
         index = (self.day - self.month).days
         # The solver's own reading: a nurse on probation counts toward no headcount (`problem.counted`).
-        uncounted = {row["id"] for row in self.input["nurses"] if row.get("on_probation")}
+        uncounted = {row["id"] for row in self.cells.solve_input["nurses"] if row.get("on_probation")}
         for headcount in problem.department.headcounts:
             if headcount.shift != self.shift.code:
                 continue
@@ -214,8 +214,8 @@ def judge(roster: Roster, day: dt.date, shift: Shift) -> CoverJudged:
     judged.full = month.full()
     if judged.full:
         return judged
-    figures = accounted(month.input, roster.grid) or {}
-    counted = month.input["general"].get("hours_rule_enabled", True)
+    figures = accounted(month.cells.solve_input, roster.grid) or {}
+    counted = month.cells.solve_input["general"].get("hours_rule_enabled", True)
     for hospital_id in sorted(roster.grid):
         if month.exclusion(hospital_id) is not None:
             continue

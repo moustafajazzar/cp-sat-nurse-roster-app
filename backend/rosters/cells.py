@@ -53,6 +53,10 @@ Holds = Shift | str | None
 YIELDS: dict[Asking, set[PinOrigin]] = {
     EDIT: {PinOrigin.MANAGER, PinOrigin.SWAP, PinOrigin.COVER},
     SWAP: {PinOrigin.MANAGER, PinOrigin.SWAP, PinOrigin.COVER},
+    # A cover is not expected to meet a cover's pin: a cover goes only to a nurse off its day on the roster in force, and a
+    # cover's pin put her on a shift that day, which an edit or a swap takes her off only by replacing the pin, and leave only by
+    # ending it. It is answered all the same, as a swap's pin is: a pin set aside reaches no solve, so a re-plan can still move
+    # its cell to a day off, and a cover then puts her on a shift there as a swap would.
     COVER: {PinOrigin.MANAGER, PinOrigin.SWAP, PinOrigin.COVER},
     REQUEST: {PinOrigin.MANAGER, PinOrigin.REQUEST},
 }
@@ -101,7 +105,7 @@ class Reason:
     shift: str | None = None
     skill: str | None = None
     last: dt.date | None = None
-    origin: str | None = None
+    origin: PinOrigin | None = None
 
     @property
     def reader(self) -> Reader:
@@ -163,11 +167,12 @@ class MonthCells:
         self.on_probation = {hospital_id for hospital_id, nurse in self.nurses.items()
                              if probation.on_probation_in(nurse, month)}
         self._night_shift = unit.rules.get("night_shift")
-        pins = PinnedCell.objects.current().in_month(month).filter(unit=unit).select_related("shift", "nurse__user")
         # The unit's pins of the month by nurse and date, for a listing of them. One left behind by a nurse transferred out is
         # among them: it is this unit's still, and holds its cell here.
-        self.pins = list(pins.order_by("nurse__user__username", "date"))
-        self._pins = {(pin.nurse.user.username, pin.date): pin for pin in self.pins}
+        self.pins = list(PinnedCell.objects.current().in_month(month).filter(unit=unit).select_related("shift", "nurse__user")
+                         .order_by("nurse__user__username", "date"))
+        # {(hospital ID, date): the pin on that cell}.
+        self._pin_by_cell = {(pin.nurse.user.username, pin.date): pin for pin in self.pins}
         self._checked: tuple[Grid, Checked] | None = None
 
     def shift(self, code: str) -> Shift | None:
@@ -186,16 +191,36 @@ class MonthCells:
         no longer work, was worked when it was set, and counts."""
         return self._cannot_hold(self._by_pk.get(pin.nurse_id), pin.date, None if over else pin.shift)
 
+    def pin_on(self, hospital_id: str, day: dt.date) -> PinnedCell | None:
+        """The pin on this nurse's cell, whatever its origin and whether or not it is set aside; None when there is none."""
+        return self._pin_by_cell.get((hospital_id, day))
+
+    def holding_already(self, hospital_id: str, day: dt.date, holds: Holds) -> PinnedCell | None:
+        """The pin on this nurse's cell when it holds just `holds` already, a shift by any older code of it too, whatever its
+        origin; None otherwise. A code is followed whether or not the unit still works it, since a pin can hold a shift the unit
+        has stopped working."""
+        pin = self.pin_on(hospital_id, day)
+        asked = holds.code if isinstance(holds, Shift) else current_code(holds) if holds else ""
+        return pin if pin is not None and pin.code == asked else None
+
     def may_change(self, hospital_id: str, day: dt.date, asking: Asking) -> Answer:
         """Whether the origin asking (an edit, a swap, a cover or a request, as `rosters.in_force.Origin` names them) may change
         this nurse's cell at all, whatever it would then hold: it may when no pin is on it, and when the pin on it yields to that
         origin, which the change then replaces. All a clear is asked, since ending a pin can break nothing."""
-        pin = self._pins.get((hospital_id, day))
+        pin = self.pin_on(hospital_id, day)
         if pin is None:
             return Answer()
         if pin.origin in YIELDS[asking]:
             return Answer(replaces=pin)
-        return Answer(reason=Reason("held", origin=pin.origin))
+        return Answer(reason=Reason("held", origin=PinOrigin(pin.origin)))
+
+    def managers_pin_replaced(self, hospital_id: str, day: dt.date, asking: Asking) -> str | None:
+        """What the manager's own pin on this nurse's cell holds (a shift's code, or "" for a day off) when a change of the
+        origin asking would replace it, for a page to say before the manager allows that change; None when the change would
+        replace no pin of theirs. A swap's, a cover's and a request's pin are not the manager's to be told of here: each is
+        changed where it was made."""
+        replaced = self.may_change(hospital_id, day, asking).replaces
+        return replaced.code if replaced is not None and replaced.origin == PinOrigin.MANAGER else None
 
     def may_hold(self, hospital_id: str, day: dt.date, asking: Asking, holds: Holds) -> Answer:
         """Whether this nurse's cell may hold `holds` for the origin asking. What the cell cannot hold is said before a pin

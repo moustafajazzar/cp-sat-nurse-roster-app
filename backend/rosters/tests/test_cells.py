@@ -164,6 +164,8 @@ REPLACES, REFUSED = "replaces", "refused"
 YIELDS = {
     EDIT: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REFUSED, PinOrigin.SWAP: REPLACES, PinOrigin.COVER: REPLACES},
     SWAP: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REFUSED, PinOrigin.SWAP: REPLACES, PinOrigin.COVER: REPLACES},
+    # A cover is not expected to meet a cover's pin, which put its nurse on a shift where a cover goes only to one off. It can
+    # once a re-plan moves the cell under a pin set aside to a day off, and is answered as a swap's pin is.
     COVER: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REFUSED, PinOrigin.SWAP: REPLACES, PinOrigin.COVER: REPLACES},
     REQUEST: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REPLACES, PinOrigin.SWAP: REFUSED, PinOrigin.COVER: REFUSED},
 }
@@ -202,6 +204,49 @@ class TestWhichPinYields:
         replaced = MonthCells(er, JUNE).may_hold("Amal", day(3), SWAP, None).replaces
 
         assert (replaced.origin, replaced.code) == ("manager", "N")
+
+    @pytest.mark.parametrize("asking", [EDIT, SWAP, COVER, REQUEST])
+    def test_the_managers_own_pin_replaced_is_named_by_what_it_holds(self, er, asking):
+        pinned(er, "Amal", 3, "N", PinOrigin.MANAGER)
+        pinned(er, "Amal", 4, None, PinOrigin.MANAGER)
+
+        cells = MonthCells(er, JUNE)
+
+        assert (cells.managers_pin_replaced("Amal", day(3), asking), cells.managers_pin_replaced("Amal", day(4), asking)) == (
+            "N", "")
+
+    @pytest.mark.parametrize("origin", [PinOrigin.REQUEST, PinOrigin.SWAP, PinOrigin.COVER])
+    def test_no_managers_pin_is_named_where_another_origins_pin_is_or_none(self, er, origin):
+        """Replaced or holding its cell, another origin's pin is not the manager's to be told of."""
+        pinned(er, "Amal", 3, "N", origin)
+
+        cells = MonthCells(er, JUNE)
+
+        assert [cells.managers_pin_replaced("Amal", day(3), asking) for asking in (EDIT, SWAP, COVER, REQUEST)] == [None] * 4
+        assert cells.managers_pin_replaced("Amal", day(5), EDIT) is None
+
+    def test_the_pin_on_a_cell_is_found_whatever_its_origin_and_set_aside_too(self, er):
+        on_the_3rd = pinned(er, "Amal", 3, "N", PinOrigin.COVER)
+        Placement.objects.filter(nurse=profile("Amal")).update(allowed_shifts=["D"])
+
+        cells = MonthCells(er, JUNE)
+
+        assert cells.set_aside(on_the_3rd) == Reason("shift_not_allowed", shift="N")
+        assert (cells.pin_on("Amal", day(3)), cells.pin_on("Amal", day(4)), cells.pin_on("Emad", day(3))) == (
+            on_the_3rd, None, None)
+
+    def test_a_pin_holding_just_what_is_asked_already_is_found_by_any_code_of_its_shift(self, er):
+        night = pinned(er, "Amal", 3, "N", PinOrigin.SWAP)
+        off = pinned(er, "Amal", 4, None, PinOrigin.COVER)
+        ShiftRename.objects.create(shift=Shift.objects.get(code="N"), old_code="NT", new_code="N", by=manager())
+
+        cells = MonthCells(er, JUNE)
+
+        assert [cells.holding_already("Amal", day(3), asked) for asked in ("N", "NT", Shift.objects.get(code="N"))] == [
+            night] * 3
+        assert (cells.holding_already("Amal", day(3), "D"), cells.holding_already("Amal", day(3), None)) == (None, None)
+        assert (cells.holding_already("Amal", day(4), None), cells.holding_already("Amal", day(4), "D")) == (off, None)
+        assert cells.holding_already("Amal", day(5), None) is None
 
     def test_a_cell_with_no_pin_may_change(self, er):
         assert MonthCells(er, JUNE).may_change("Amal", day(3), EDIT) == Answer()

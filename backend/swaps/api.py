@@ -15,7 +15,7 @@ from ninja import Field, Query, Router, Schema
 from hospital.api import StrictSchema, refuse
 from rosters.api import GridCheck, _grid_check
 from rosters.cells import SWAP, MonthCells
-from rosters.models import PinOrigin, Roster
+from rosters.models import Roster
 from rosters.review import name_of
 from solves.api import MonthFilter, chosen_month, manager
 from swaps import steps
@@ -90,25 +90,19 @@ class SwapDecision(Schema):
     approve_refusal: str | None
 
 
-def _managers_pin_replaced(month: MonthCells, cell: SwapCellRow) -> str | None:
-    """What the manager's own pin on this cell holds, when the swap would replace one: the page says so before they approve.
-    A swap replaces a swap's and a cover's pin too, which are not the manager's to be told of."""
-    replaced = month.may_change(cell.hospital_id, cell.date, SWAP).replaces
-    return replaced.code if replaced is not None and replaced.origin == PinOrigin.MANAGER else None
-
-
 def _decision(request: HttpRequest, unit_id: UUID, swap_id: UUID) -> SwapDecision:
     unit = unit_in_scope(request.user, unit_id)
     swap = with_rows(Swap.objects.filter(pk=swap_id, unit=unit).select_related("made_version")).first()
     if swap is None:
         raise Http404("There is no such swap in your unit.")
     roster = Roster.objects.select_related("unit").get(pk=swap.roster_id)
-    # Only while it may still be approved: once it has ended, no approval will replace anything.
-    month = MonthCells(unit, roster.month) if swap.waiting else None
-    cells = [DecisionCell(**row.dict(), now=roster.grid.get(row.hospital_id, {}).get(row.date.isoformat(), ""),
-                          replaces_pin=_managers_pin_replaced(month, row) if month else None)
-             for row in swap_cells(swap)]
-    answer = SwapDecision(swap=unit_row(swap), cells=cells, check=None, cost_before=None, cost_after=None, delta=None,
+    # Only while it may still be approved: once it has ended, no approval will replace anything. The page says what the
+    # manager's own pin on a cell holds before they approve a swap that replaces it.
+    cells = MonthCells(unit, roster.month) if swap.waiting else None
+    rows = [DecisionCell(**row.dict(), now=roster.grid.get(row.hospital_id, {}).get(row.date.isoformat(), ""),
+                         replaces_pin=cells.managers_pin_replaced(row.hospital_id, row.date, SWAP) if cells else None)
+            for row in swap_cells(swap)]
+    answer = SwapDecision(swap=unit_row(swap), cells=rows, check=None, cost_before=None, cost_after=None, delta=None,
                           problems=[], approve_refusal=None)
     state = state_now(swap)
     if state not in WAITING:
