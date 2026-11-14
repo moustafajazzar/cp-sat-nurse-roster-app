@@ -52,8 +52,9 @@ import { plainRefusal, serverErrors, showServerErrors } from "@/lib/server-error
 import { useDebounced } from "@/lib/use-debounced"
 import { hospitalTime, longDay, monthName } from "@/lib/utils"
 import { onlyFor } from "@/session"
+import { WorkspacePrototype } from "@/components/workspace-prototype"
 
-const searchSchema = z.object({ month: monthInAddress })
+const searchSchema = z.object({ month: monthInAddress, variant: z.enum(["a", "b", "c"]).optional() })
 
 export const Route = createFileRoute("/_signed-in/roster")({
   validateSearch: (search) => searchSchema.parse(search),
@@ -749,8 +750,10 @@ function UnitRoster({ unit, month: inAddress }: { unit: { id: string; name: stri
 
 function RosterPage() {
   const { user } = useRouteContext({ from: "/_signed-in" })
-  const { month } = Route.useSearch()
+  const { month, variant } = Route.useSearch()
   const { units, chosen } = useChosenUnit(user, undefined)
+  // PROTOTYPE (roster workspace): ?variant=a|b|c swaps the page for a throwaway workspace layout.
+  if (variant && chosen) return <WorkspacePrototype unit={chosen} month={month} variant={variant} user={user} />
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-4">
       <h1 className="text-xl font-medium">{chosen ? `Roster of ${chosen.name}` : "Roster"}</h1>

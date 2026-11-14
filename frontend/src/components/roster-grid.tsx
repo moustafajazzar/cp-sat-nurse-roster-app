@@ -37,7 +37,9 @@ export type GridEditing = {
   onOpen: (hospitalId: string, date: string, button: HTMLButtonElement) => void
 }
 
-function EditableCell({ cell, shifts, title, marks, focusable, id, onOpen, onKeyDown }: {
+function EditableCell({ cell, shifts, title, marks, focusable, id, onOpen, onKeyDown, hid, date }: {
+  hid?: string
+  date?: string
   cell: GridCell
   shifts: Map<string, GridShift>
   title: string
@@ -57,7 +59,7 @@ function EditableCell({ cell, shifts, title, marks, focusable, id, onOpen, onKey
   return (
     <td role="gridcell" className={cn("border-b border-s p-0 text-center text-xs font-medium", !code && cell.kind !== "shift" && NOT_WORKING[cell.kind].className)}
       style={shift ? { backgroundColor: shift.colour, color: readableOn(shift.colour) } : undefined}>
-      <button type="button" id={id} data-cell={id} tabIndex={focusable ? 0 : -1} aria-haspopup="menu" aria-label={label} title={label}
+      <button type="button" id={id} data-cell={id} data-hid={hid} data-date={date} tabIndex={focusable ? 0 : -1} aria-haspopup="menu" aria-label={label} title={label}
         onClick={(event) => onOpen(event.currentTarget)} onKeyDown={onKeyDown}
         className={cn("relative flex size-full min-h-8 items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
           pending && "outline-2 -outline-offset-4 outline-dashed outline-current",
@@ -92,7 +94,9 @@ function Cell({ cell, shifts, title }: { cell: GridCell; shifts: Map<string, Gri
  *  it is one stop for Tab, whose arrows move between cells and whose Enter or Space opens the cell's editor. Nurses on probation
  *  come last (the server orders them so) in a row group of their own under the "On probation" heading, each with her preceptor's
  *  name; the arrows pass over the heading. */
-export function RosterGrid({ grid, label, editing, extraShifts = [], markedDate }: { grid: GridView; label: string; editing?: GridEditing; extraShifts?: GridShift[]; markedDate?: string }) {
+export function RosterGrid({ grid, label, editing, extraShifts = [], markedDate, compact = false, headRows, footRows, fill = false }: { grid: GridView; label: string; editing?: GridEditing; extraShifts?: GridShift[]; markedDate?: string
+  /** PROTOTYPE (roster workspace): narrower day columns, extra rows pinned above or below, and a grid that fills its parent. */
+  compact?: boolean; headRows?: ReactNode; footRows?: ReactNode; fill?: boolean }) {
   const scroller = useRef<HTMLDivElement>(null)
   /** The date the Day view opened it on: its column scrolled into view once, and its header marked. */
   const marked = useRef<HTMLTableCellElement>(null)
@@ -187,7 +191,7 @@ export function RosterGrid({ grid, label, editing, extraShifts = [], markedDate 
           const hospitalId = row.original.hospital_id
           const date = cell.column.id
           return (
-            <EditableCell key={cell.id} id={cellId(index, col)} cell={cell.getValue() as GridCell} shifts={shifts} title={title}
+            <EditableCell key={cell.id} id={cellId(index, col)} hid={hospitalId} date={date} cell={cell.getValue() as GridCell} shifts={shifts} title={title}
               marks={editing.marks(hospitalId, date)} focusable={active.row === index && active.col === col}
               onOpen={(button) => { setActive({ row: index, col }); editing.onOpen(hospitalId, date, button) }}
               onKeyDown={(event) => move(event, index, col)} />
@@ -200,7 +204,7 @@ export function RosterGrid({ grid, label, editing, extraShifts = [], markedDate 
   // `relative` keeps each cell's screen-reader text inside the scroller, or the whole page scrolls sideways.
   return (
     <div ref={scroller} {...region}
-      className={cn(region.className, "relative overflow-auto border", windowed && "max-h-[70svh]")}>
+      className={cn(region.className, "relative overflow-auto border", windowed && !fill && "max-h-[70svh]", fill && "h-full")}>
       <table role={editing ? "grid" : undefined} aria-label={editing ? label : undefined} aria-rowcount={rows.length + 1 + (anyOnProbation ? 1 : 0)}
         className="w-max border-separate border-spacing-0 text-sm">
         <thead className="sticky top-0 z-20 bg-background">
@@ -213,7 +217,7 @@ export function RosterGrid({ grid, label, editing, extraShifts = [], markedDate 
               return (
                 <th key={header.id} scope="col" title={longDay.format(date) + (day.holiday ? ", public holiday" : "")}
                   ref={isMarked ? marked : undefined} aria-current={isMarked ? "date" : undefined}
-                  className={cn("w-9 min-w-9 border-b border-s px-0 py-1 text-center text-xs font-medium tabular-nums", (day.weekend || day.holiday) && "bg-muted",
+                  className={cn(compact ? "w-7 min-w-7" : "w-9 min-w-9", "border-b border-s px-0 py-1 text-center text-xs font-medium tabular-nums", (day.weekend || day.holiday) && "bg-muted",
                     isMarked && "bg-primary text-primary-foreground")}>
                   <span className="block">{date.getUTCDate()}</span>
                   {/* Plain foreground: the muted one falls short of 4.5:1 on the shaded days. */}
@@ -223,6 +227,7 @@ export function RosterGrid({ grid, label, editing, extraShifts = [], markedDate 
               )
             })}
           </tr>
+          {headRows}
         </thead>
         <tbody>
           {spacer(before)}
@@ -244,6 +249,7 @@ export function RosterGrid({ grid, label, editing, extraShifts = [], markedDate 
             {spacer(after)}
           </tbody>
         )}
+        {footRows && <tfoot className="sticky bottom-0 z-20 bg-background">{footRows}</tfoot>}
       </table>
     </div>
   )
