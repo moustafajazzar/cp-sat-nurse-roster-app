@@ -1,4 +1,7 @@
-"""Reading a stored result: the one place that says what its fields mean to this application."""
+"""Reading a stored result: the one place that says what its fields mean to this application.
+
+A violation states which shift of its day it is about and, for a headcount, its figures, as fields. The results and month closes
+stored before the solver stated them hold only its words, so the patterns that read those words are here and nowhere else."""
 from __future__ import annotations
 
 import datetime as dt
@@ -13,6 +16,13 @@ from solver_service.grid import validate_grid
 LARGEST = 5
 _DAY = re.compile(r"(?<![/\w])day (-?\d+)\b")  # Not "changes night/day 6 times", the one place a day's number follows otherwise.
 
+# The solver's rules about a shift-day as a whole, and how its words named one before it stated the shift as a field:
+# "headcount: day 8 D = 0, want 1..1", "team leader: day 8 D has none", "gender: day 8 D has only {'F'}",
+# "skill need: day 8 N has 0 holding ICU, needs 1 (1 short)".
+SHIFT_DAY_RULES = ("headcount", "team_leader", "gender", "skill_need")
+_SHIFT_DAY = re.compile(r"^[a-z ]+: day -?\d+ (\S+) ")
+_HEADCOUNT = re.compile(r"= (\d+), want (\d+)\.\.(\d+)")
+
 
 def has_a_roster_to_keep(result: dict | None) -> bool:
     """A result can hold no roster, or one the validator says breaks a hard rule, which `ok` false reports. Neither becomes
@@ -24,6 +34,24 @@ def in_dates(text: str, month: dt.date) -> str:
     """The solver's words count a month's days from 0 ("day 4" is the 5th), and from below 0 for the days before it, which
     next to a date in the same line reads as a mistake."""
     return _DAY.sub(lambda found: (month + dt.timedelta(days=int(found[1]))).isoformat(), text)
+
+
+def shift_day(violation: dict) -> tuple[str, str] | None:
+    """The shift-day a violation of a shift-day rule is about, as (date, shift code), or None for any other."""
+    if violation["rule"] not in SHIFT_DAY_RULES or violation["nurse"] or not violation["date"]:
+        return None
+    if "shift" in violation:
+        return violation["date"], violation["shift"]
+    found = _SHIFT_DAY.match(violation["text"])
+    return (violation["date"], found[1]) if found else None
+
+
+def headcount_of(violation: dict) -> tuple[int, int, int]:
+    """A headcount violation's (present, minimum, maximum)."""
+    if "present" in violation:
+        return violation["present"], violation["minimum"], violation["maximum"]
+    present, low, high = (int(number) for number in _HEADCOUNT.search(violation["text"]).groups())
+    return present, low, high
 
 
 def explanation(solve_input: dict, result: dict | None) -> dict[str, dict] | None:

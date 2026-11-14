@@ -115,6 +115,11 @@ class Checked:
     def cost(self) -> int | None:
         return self.answer["cost"] if self.answer else None
 
+    @property
+    def violations(self) -> list[dict]:
+        """The hard rules the grid breaks; none are known of a grid that could not be checked."""
+        return self.answer["violations"] if self.answer else []
+
 
 def _on_the_month(solve_input: dict, grid: dict[str, dict[str, str]]) -> tuple[dict, dict[str, dict[str, str]]]:
     """The loader wants exactly the input's nurses. One who left has no say in the month, and one who joined since the solve

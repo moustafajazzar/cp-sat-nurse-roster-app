@@ -20,12 +20,12 @@ from closes.models import MonthClose
 from hospital.models import HospitalSettings, Shift
 from nurses import membership
 from nurses.models import Leave, NurseProfile
-from rosters.approved import headcount_of, shift_day
 from rosters.drafts import current_code
 from rosters.editing import accounted, scored
 from rosters.grids import by_name, full_names
 from rosters.models import Roster, RosterState
 from solves.input import assemble
+from solves.result import headcount_of, shift_day
 from units.models import Unit
 
 State = Literal["none", "draft", "submitted", "approved", "closed"]

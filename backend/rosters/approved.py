@@ -5,16 +5,15 @@ from __future__ import annotations
 
 import copy
 import datetime as dt
-import re
 from dataclasses import dataclass
 
 from hospital.models import Shift
 from nurses.models import NurseProfile
 from rosters.drafts import current_code
-from rosters.editing import Checked
 from rosters.models import PinnedCell, Roster
 from rosters.pins import Judge
 from rosters.versions import Grid
+from solves.result import headcount_of, shift_day
 
 
 @dataclass(frozen=True)
@@ -70,56 +69,31 @@ def with_pins(solve_input: dict, month: ApprovedMonth, new_cells: list[NewCell])
     return edited
 
 
-def violation_key(violation: dict) -> tuple:
-    """The solver's text tells the shifts of one day apart, and says how far a rule is broken: one broken further is new."""
-    return violation["rule"], violation["nurse"], violation["date"], violation["text"]
-
-
-def already_broken(before: Checked) -> set[tuple]:
-    """A hard rule the roster in force already breaks is not the change's, since an edit may save one."""
-    return {violation_key(row) for row in before.answer["violations"]} if before.answer else set()
-
-
-# The solver's rules of a shift-day as a whole, and how its text names the shift-day: "headcount: day 8 D = 0, want 1..1",
-# "team leader: day 8 D has none", "gender: day 8 D has only {'F'}" (`nurse_roster/validate.py`).
-SHIFT_DAY_RULES = ("headcount", "team_leader", "gender")
-_SHIFT_DAY = re.compile(r"^[a-z ]+: day -?\d+ (\S+) ")
-_HEADCOUNT = re.compile(r"= (\d+), want (\d+)\.\.(\d+)")
-
-
-def shift_day(violation: dict) -> tuple[str, str] | None:
-    """The shift-day a violation of a shift-day rule is about, as (date, shift code), or None for any other."""
-    if violation["rule"] not in SHIFT_DAY_RULES or violation["nurse"] or not violation["date"]:
-        return None
-    found = _SHIFT_DAY.match(violation["text"])
-    return (violation["date"], found[1]) if found else None
-
-
-def headcount_of(violation: dict) -> tuple[int, int, int]:
-    """A headcount's (present, minimum, maximum), from the solver's text."""
-    present, low, high = (int(number) for number in _HEADCOUNT.search(violation["text"]).groups())
-    return present, low, high
-
-
 def _beyond(violation: dict) -> int:
     """How far a headcount is outside its range."""
     present, low, high = headcount_of(violation)
     return low - present if present < low else present - high
 
 
-def newly_broken(before: Checked, after: Checked) -> list[dict]:
-    """What `after` breaks that `before` did not, or breaks further. The solver's text says how far a rule is broken, so one
-    broken further reads as new (`violation_key`); a headcount is compared by how far it is outside its range, since its text
-    changes as it comes nearer: one more nurse on a short shift-day breaks it less, not anew."""
-    old = before.answer["violations"] if before.answer else []
-    already = already_broken(before)
-    headcounts = {shift_day(row): _beyond(row) for row in old if row["rule"] == "headcount" and shift_day(row)}
+def _as_broken(violation: dict) -> tuple:
+    """A violation with how far it breaks its rule, which only its words say: one broken further reads differently."""
+    where = shift_day(violation)
+    return violation["rule"], violation["nurse"], violation["date"], where and where[1], violation["text"]
+
+
+def newly_broken(before: list[dict], after: list[dict]) -> list[dict]:
+    """The violations of `after` that `before` does not hold, or holds broken less: what a change to the roster in force
+    breaks, between that roster's violations and the changed grid's. A hard rule the roster in force already breaks is not the
+    change's, since an edit may save one. A headcount is compared by how far it is outside its range, as its words change when
+    it comes nearer: one more nurse on a short shift-day breaks it less, not anew."""
+    already = {_as_broken(violation) for violation in before}
+    headcounts = {shift_day(row): _beyond(row) for row in before if row["rule"] == "headcount" and shift_day(row)}
     new = []
-    for violation in after.answer["violations"]:
+    for violation in after:
         where = shift_day(violation)
         if violation["rule"] == "headcount" and where in headcounts:
             if _beyond(violation) > headcounts[where]:
                 new.append(violation)
-        elif violation_key(violation) not in already:
+        elif _as_broken(violation) not in already:
             new.append(violation)
     return new

@@ -26,12 +26,12 @@ from nurse_roster.request import load_request
 
 from accounts.models import Role
 from hospital.models import Shift
-from rosters.approved import ApprovedMonth, NewCell, headcount_of, newly_broken, shift_day, with_pins
+from rosters.approved import ApprovedMonth, NewCell, newly_broken, with_pins
 from rosters.editing import Checked, accounted, scored
 from rosters.models import PinOrigin, Roster
 from rosters.pins import long_date
 from solves.input import assemble
-from solves.result import in_dates
+from solves.result import headcount_of, in_dates, shift_day
 
 LACKS = {"team_leader": "No team leader", "gender": "Not both genders"}
 
@@ -61,7 +61,9 @@ class CoverJudged:
 
 
 def _on(violations: list[dict], day: dt.date, code: str) -> list[dict]:
-    return [row for row in violations if shift_day(row) == (day.isoformat(), code)]
+    """What a cover's shift-day lacks: its headcount, and what `LACKS` words."""
+    return [row for row in violations if (row["rule"] == "headcount" or row["rule"] in LACKS)
+            and shift_day(row) == (day.isoformat(), code)]
 
 
 def _lack_words(violation: dict, month: dt.date) -> str:
@@ -154,7 +156,7 @@ class CoverMonth(ApprovedMonth):
         """Her grid's check, and the hard rules it newly breaks."""
         new_cells = [NewCell(hospital_id, self.day, self.shift.code)]
         after = scored(with_pins(self.input, self, new_cells), self.grid_after(new_cells))
-        return after, (newly_broken(self.before, after) if after.answer else [])
+        return after, (newly_broken(self.before.violations, after.violations) if after.answer else [])
 
     def full(self) -> str | None:
         """Why one more nurse cannot help, when the shift-day is already at its maximum headcount."""

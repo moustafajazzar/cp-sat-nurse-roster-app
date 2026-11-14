@@ -199,6 +199,6 @@ def judge(roster: Roster, new_cells: list[NewCell], proposer: NurseProfile | Non
                                        "This swap cannot be checked against the roster now. Ask your manager."))
         return judged
     preceptors = {row["id"]: row["preceptor"] for row in solve_input["nurses"] if row.get("preceptor")}
-    for violation in newly_broken(judged.before, judged.after):
+    for violation in newly_broken(judged.before.violations, judged.after.violations):
         judged.problems.append(_violation_problem(violation, month, new_cells, proposer, preceptors))
     return judged
