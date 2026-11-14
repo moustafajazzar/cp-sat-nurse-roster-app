@@ -58,6 +58,12 @@ def rules_require(unit, **rules):
     unit.save()
 
 
+def night_needs(unit, *skills, least=1, hard=True):
+    """Night needs so many nurses holding each of these skills, every day."""
+    rules_require(unit, skill_needs_hard=hard, skill_needs=[
+        {"shift": "N", "skill": skill, "weekday_min": least, "weekend_min": least} for skill in skills])
+
+
 def day_shift() -> Shift:
     return Shift.objects.get(code="D")
 

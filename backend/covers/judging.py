@@ -8,6 +8,11 @@ force already breaks is not hers, so a shift-day already short does not empty it
 more nurse on a short shift-day breaks it, is not broken anew. A manager's pin or a swap's to a day off is noted as replaced;
 a cell in a waiting swap is left in, since any version expires that swap.
 
+What the shift-day lacks is each hard rule about a shift-day as a whole that the roster in force breaks there: its headcount, a
+team leader, both genders, and a skill need left short, with a line for each skill. A nurse makes it whole when her taking it
+leaves none of them broken, which for a need left short takes a nurse holding its skill. A skill need the unit prices instead
+of requiring breaks no rule when it is short, so it is no lack.
+
 The list is ranked by how far below her owed hours this month each stands, then by least overtime this year, then by name, with
 the figures from the solver's own per-nurse accounting on the roster in force, the arithmetic My month uses. Nothing of it is
 stored: it is read again each time it is asked for.
@@ -15,8 +20,9 @@ stored: it is read again each time it is asked for.
 Only the unit's manager reads the list, as they read the leave and the attributes it rests on. An acceptance is judged again
 for its nurse alone (`CoverMonth.refusal_for`), the same way, and refused in her own words: what is hers is said in full (her
 leave, her dates, her shifts, her request, a rule broken on her own row) and so is what My roster shows (a cell's shift, the
-shift-day's headcount); a rule resting on a colleague, a team leader or both genders on the shift-day, is said only as the
-unit's rules on that day, as a swap's proposer reads it (`swaps.judging`)."""
+shift-day's headcount); a rule resting on a colleague, a team leader, both genders or a skill need on the shift-day, is said
+only as the unit's rules on that day, as a swap's proposer reads it (`swaps.judging`). So the lack's line for a skill need, which
+names the skill and how many hold it, is the manager's alone."""
 from __future__ import annotations
 
 import datetime as dt
@@ -33,7 +39,8 @@ from rosters.pins import long_date
 from solves.input import assemble
 from solves.result import headcount_of, shift_day
 
-LACKS = {"team_leader": "No team leader", "gender": "Not both genders"}
+# The solver's check, quoted beside each, names the skill and the figures, so a need's line does not read them out of its words.
+LACKS = {"team_leader": "No team leader", "gender": "Not both genders", "skill_need": "Short of a skill it needs"}
 
 
 @dataclass(frozen=True)
@@ -61,7 +68,9 @@ class CoverJudged:
 
 
 def _on(violations: list[dict], day: dt.date, code: str) -> list[dict]:
-    """What a cover's shift-day lacks: its headcount, and what `LACKS` words."""
+    """What a cover's shift-day lacks: its headcount, and what `LACKS` words. A skill need left short is one violation for each
+    skill, so a shift-day short of two skills lacks twice. These are a hard rule's violations only: a skill need the unit
+    prices instead is not among them."""
     return [row for row in violations if (row["rule"] == "headcount" or row["rule"] in LACKS)
             and shift_day(row) == (day.isoformat(), code)]
 
@@ -148,7 +157,8 @@ class CoverMonth(ApprovedMonth):
             elif violation["rule"] == "headcount":
                 said.append(f"Taking this cover would break the unit's rules: {text}")
             else:
-                # A colleague's rule, or a team leader or both genders on a shift-day, would say who holds which attribute.
+                # A colleague's rule, or a team leader, both genders or a skill need on a shift-day, would say who holds which
+                # attribute.
                 said.append(f"You cannot take this cover: the shifts on {on} would break the unit's rules.")
         return list(dict.fromkeys(said))
 

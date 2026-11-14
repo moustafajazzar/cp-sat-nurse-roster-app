@@ -10,8 +10,8 @@ from accounts.models import Role
 from audit.models import AuditEntry
 from covers.models import Cover, CoverState
 from covers.tasks import expire_covers
-from covers.tests.conftest import (MONTH, answer, answered, badrs_day, cover_page, my_covers, offer, offered, ok, opened,
-                                   record_leave, refusals, the_25th, wider_day, withdraw)
+from covers.tests.conftest import (MONTH, answer, answered, badrs_day, cover_page, my_covers, night_needs, offer, offered, ok,
+                                   opened, record_leave, refusals, the_25th, wider_day, withdraw)
 from notifications.models import Event, Notification
 from nurses.models import NurseProfile, Placement
 from notifications.tests.test_events import as_user, told
@@ -232,6 +232,22 @@ class TestAccepting:
 
         assert said[0].startswith("This breaks a rule for you: ") and "Emad" in said[0]
         assert Cover.objects.get().state == CoverState.OFFERED
+
+    def test_a_skill_need_it_would_break_is_said_only_as_the_units_rules(self, in_force, mona):
+        """Who holds a skill is a colleague's attribute, which a nurse never reads. Amal is offered the Night on the 9th, which
+        Dana works alone; Night then comes to need two nurses holding ICU, and Amal holds it. With her the need is one short
+        where it was two, which reads as a violation the roster in force does not hold, so as one her taking it breaks."""
+        from rosters.tests.test_review import holding
+        cover_id = opened(mona, in_force, 9, "N")["cover"]["id"]
+        offered(mona, in_force, cover_id, "Amal")
+        night_needs(in_force, "ICU", least=2)
+        holding("Amal", "ICU", None, expires=False)
+
+        said = refusals(answer(as_user("Amal"), cover_id, "accept"), 409)
+
+        assert said == ["You cannot take this cover: the shifts on 9 June 2026 would break the unit's rules."]
+        assert not [word for word in ("skill", "ICU", "holding", "short") if word in " ".join(said)]
+        assert cover_page(mona, in_force, cover_id)["cover"]["state"] == "offered"
 
     def test_a_cover_whose_date_has_passed_is_refused_and_stored_expired(self, in_force, mona, on_day):
         cover_id = badrs_day(mona, in_force)

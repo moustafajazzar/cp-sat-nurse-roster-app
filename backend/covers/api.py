@@ -90,7 +90,8 @@ class CoverCheck(Schema):
     reason: str | None = Field(description="Why the roster in force could not be checked, in the solver's words: then nobody "
                                            "is listed.")
     lack: list[str] = Field(description="What the shift-day lacks on the roster in force, from the solver's own check: its "
-                                        "headcount, a team leader, both genders. Empty when it lacks nothing.")
+                                        "headcount, a team leader, both genders, a skill it needs. Empty when it lacks "
+                                        "nothing.")
     full: str | None = Field(description="Why nobody is listed: the shift-day is at its maximum headcount.")
     nurses: list[CouldTakeRow] = Field(description="The staff nurses who could take it without newly breaking a hard rule, "
                                                    "furthest below their owed hours first, then least overtime this year, then "

@@ -4900,7 +4900,7 @@ export const OpenUnitCoverResponse = zod.object({
 }),
   "check": zod.union([zod.object({
   "reason": zod.union([zod.string(),zod.null()]).describe('Why the roster in force could not be checked, in the solver\'s words: then nobody is listed.'),
-  "lack": zod.array(zod.string()).describe('What the shift-day lacks on the roster in force, from the solver\'s own check: its headcount, a team leader, both genders. Empty when it lacks nothing.'),
+  "lack": zod.array(zod.string()).describe('What the shift-day lacks on the roster in force, from the solver\'s own check: its headcount, a team leader, both genders, a skill it needs. Empty when it lacks nothing.'),
   "full": zod.union([zod.string(),zod.null()]).describe('Why nobody is listed: the shift-day is at its maximum headcount.'),
   "nurses": zod.array(zod.object({
   "hospital_id": zod.string(),
@@ -4949,7 +4949,7 @@ export const GetUnitCoverResponse = zod.object({
 }),
   "check": zod.union([zod.object({
   "reason": zod.union([zod.string(),zod.null()]).describe('Why the roster in force could not be checked, in the solver\'s words: then nobody is listed.'),
-  "lack": zod.array(zod.string()).describe('What the shift-day lacks on the roster in force, from the solver\'s own check: its headcount, a team leader, both genders. Empty when it lacks nothing.'),
+  "lack": zod.array(zod.string()).describe('What the shift-day lacks on the roster in force, from the solver\'s own check: its headcount, a team leader, both genders, a skill it needs. Empty when it lacks nothing.'),
   "full": zod.union([zod.string(),zod.null()]).describe('Why nobody is listed: the shift-day is at its maximum headcount.'),
   "nurses": zod.array(zod.object({
   "hospital_id": zod.string(),
@@ -5011,7 +5011,7 @@ export const OfferUnitCoverResponse = zod.object({
 }),
   "check": zod.union([zod.object({
   "reason": zod.union([zod.string(),zod.null()]).describe('Why the roster in force could not be checked, in the solver\'s words: then nobody is listed.'),
-  "lack": zod.array(zod.string()).describe('What the shift-day lacks on the roster in force, from the solver\'s own check: its headcount, a team leader, both genders. Empty when it lacks nothing.'),
+  "lack": zod.array(zod.string()).describe('What the shift-day lacks on the roster in force, from the solver\'s own check: its headcount, a team leader, both genders, a skill it needs. Empty when it lacks nothing.'),
   "full": zod.union([zod.string(),zod.null()]).describe('Why nobody is listed: the shift-day is at its maximum headcount.'),
   "nurses": zod.array(zod.object({
   "hospital_id": zod.string(),
@@ -5060,7 +5060,7 @@ export const WithdrawUnitCoverResponse = zod.object({
 }),
   "check": zod.union([zod.object({
   "reason": zod.union([zod.string(),zod.null()]).describe('Why the roster in force could not be checked, in the solver\'s words: then nobody is listed.'),
-  "lack": zod.array(zod.string()).describe('What the shift-day lacks on the roster in force, from the solver\'s own check: its headcount, a team leader, both genders. Empty when it lacks nothing.'),
+  "lack": zod.array(zod.string()).describe('What the shift-day lacks on the roster in force, from the solver\'s own check: its headcount, a team leader, both genders, a skill it needs. Empty when it lacks nothing.'),
   "full": zod.union([zod.string(),zod.null()]).describe('Why nobody is listed: the shift-day is at its maximum headcount.'),
   "nurses": zod.array(zod.object({
   "hospital_id": zod.string(),

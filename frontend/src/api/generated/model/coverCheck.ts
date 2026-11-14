@@ -9,7 +9,7 @@ import type { CouldTakeRow } from './couldTakeRow';
 export interface CoverCheck {
   /** Why the roster in force could not be checked, in the solver's words: then nobody is listed. */
   reason: string | null;
-  /** What the shift-day lacks on the roster in force, from the solver's own check: its headcount, a team leader, both genders. Empty when it lacks nothing. */
+  /** What the shift-day lacks on the roster in force, from the solver's own check: its headcount, a team leader, both genders, a skill it needs. Empty when it lacks nothing. */
   lack: string[];
   /** Why nobody is listed: the shift-day is at its maximum headcount. */
   full: string | null;

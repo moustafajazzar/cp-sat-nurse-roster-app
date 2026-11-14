@@ -10,13 +10,13 @@ from accounts.models import Role, User
 from audit.models import AuditEntry
 from covers.models import Cover, CoverState
 from covers.tasks import expire_covers
-from covers.tests.conftest import (MONTH, cover_page, covers_of, offered, ok, open_cover, opened, record_leave, refusals,
-                                   rules_require, wider_day, withdraw)
+from covers.tests.conftest import (MONTH, cover_page, covers_of, night_needs, offered, ok, open_cover, opened, record_leave,
+                                   refusals, rules_require, wider_day, withdraw)
 from notifications.tests.test_events import as_user
 from nurses.models import NurseProfile, Placement
 from requesting.tests.conftest import asked, decided as request_decided, opened as opened_window
 from rosters.tests.test_pins import icu, off, pin
-from rosters.tests.test_review import solved, submitted
+from rosters.tests.test_review import holding, solved, submitted
 from rosters.tests.test_versions import changed
 from swaps.tests.conftest import SOUND_SWAP, acted, cell as swap_cell, decided, proposed
 
@@ -122,7 +122,6 @@ class TestWhoIsLeftOut:
 
     def test_a_required_skill_of_hers_expired_before_it_and_the_cover_is_still_judged(self, in_force, mona):
         """Her shift on a barred day is the grid's to break, not a pin the solver refuses."""
-        from rosters.tests.test_review import holding
         holding("Amal", "BLS", dt.date(2026, 6, 8), required=True)
 
         assert not amal_could(opened(mona, in_force, 9, "N"))
@@ -218,6 +217,51 @@ class TestTheShiftDay:
         assert page["check"]["full"] == ("Day on 9 June 2026 already has 1 of at most 1, so one more nurse would break its "
                                          "headcount. To change who works it, edit the roster.")
         assert page["check"]["lack"] == ["No team leader (the solver's check: team leader: 2026-06-09 D has none)."]
+
+
+class TestASkillNeed:
+    """Night needs a nurse holding ICU every day. Dana works the only Night on the 9th, and Amal alone could join her."""
+
+    SHORT_OF_ICU = ("Short of a skill it needs (the solver's check: skill need: 2026-06-09 N has 0 holding ICU, needs 1 "
+                    "(1 short)).")
+
+    def test_a_need_left_short_is_in_the_lack_and_one_who_does_not_hold_the_skill_is_listed_unmarked(self, in_force, mona):
+        night_needs(in_force, "ICU")
+
+        page = opened(mona, in_force, 9, "N")
+
+        assert page["check"]["lack"] == [self.SHORT_OF_ICU]
+        assert [(row["hospital_id"], row["makes_whole"]) for row in page["check"]["nurses"]] == [("Amal", False)]
+
+    def test_the_mark_is_on_who_holds_the_skill(self, in_force, mona):
+        night_needs(in_force, "ICU")
+        holding("Amal", "ICU", None, expires=False)
+
+        page = opened(mona, in_force, 9, "N")
+
+        assert page["check"]["lack"] == [self.SHORT_OF_ICU]
+        assert [(row["hospital_id"], row["makes_whole"]) for row in page["check"]["nurses"]] == [("Amal", True)]
+
+    def test_each_need_left_short_is_a_line_and_one_still_short_with_her_leaves_her_unmarked(self, in_force, mona):
+        """Night needs a nurse holding Triage too, which Amal does not."""
+        night_needs(in_force, "ICU", "Triage")
+        holding("Amal", "ICU", None, expires=False)
+
+        page = opened(mona, in_force, 9, "N")
+
+        assert page["check"]["lack"] == [
+            self.SHORT_OF_ICU,
+            "Short of a skill it needs (the solver's check: skill need: 2026-06-09 N has 0 holding Triage, needs 1 (1 short))."]
+        assert [(row["hospital_id"], row["makes_whole"]) for row in page["check"]["nurses"]] == [("Amal", False)]
+
+    def test_a_need_that_is_priced_and_not_required_is_no_lack(self, in_force, mona):
+        """A soft need left short costs the roster and breaks no rule, so the shift-day lacks nothing with or without her."""
+        night_needs(in_force, "ICU", hard=False)
+
+        page = opened(mona, in_force, 9, "N")
+
+        assert page["check"]["lack"] == []
+        assert [(row["hospital_id"], row["makes_whole"]) for row in page["check"]["nurses"]] == [("Amal", True)]
 
 
 class TestTheRanking:

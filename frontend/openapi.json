@@ -15477,7 +15477,7 @@
             "title": "Reason"
           },
           "lack": {
-            "description": "What the shift-day lacks on the roster in force, from the solver's own check: its headcount, a team leader, both genders. Empty when it lacks nothing.",
+            "description": "What the shift-day lacks on the roster in force, from the solver's own check: its headcount, a team leader, both genders, a skill it needs. Empty when it lacks nothing.",
             "items": {
               "type": "string"
             },
