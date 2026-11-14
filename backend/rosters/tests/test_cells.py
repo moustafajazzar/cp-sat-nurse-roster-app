@@ -165,7 +165,7 @@ YIELDS = {
     EDIT: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REFUSED, PinOrigin.SWAP: REPLACES, PinOrigin.COVER: REPLACES},
     SWAP: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REFUSED, PinOrigin.SWAP: REPLACES, PinOrigin.COVER: REPLACES},
     COVER: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REFUSED, PinOrigin.SWAP: REPLACES, PinOrigin.COVER: REPLACES},
-    REQUEST: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REPLACES, PinOrigin.SWAP: REFUSED, PinOrigin.COVER: REPLACES},
+    REQUEST: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REPLACES, PinOrigin.SWAP: REFUSED, PinOrigin.COVER: REFUSED},
 }
 PAIRINGS = [(asking, origin, outcome) for asking, row in YIELDS.items() for origin, outcome in row.items()]
 

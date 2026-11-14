@@ -23,8 +23,9 @@ from requesting.models import (LIVE, Preference, PreferenceKind, PreferenceState
                                RequestWindow, Step, WindowState)
 from requesting.windows import catch_up, not_closed, state_today
 from rosters.cell_words import bar_said
-from rosters.cells import MonthCells
+from rosters.cells import REQUEST, MonthCells
 from rosters.drafts import current_code
+from rosters.models import PinOrigin
 from rosters.pins import long_date
 from units.models import Unit
 
@@ -116,8 +117,8 @@ def nurse_refusal(cells: MonthCells, nurse: NurseProfile, day: dt.date, asked: s
                   verb: str = "request") -> tuple[str, str] | None:
     """Why her cell could not hold `asked`, a shift's code or None for a day off, by the judgement a manager's acceptance
     gets (`rosters.cells`), said to the nurse with the field it is about: a request that could never be accepted is refused
-    here, and a preference that could count for nothing (`verb` "prefer"). A pin on the cell is not asked about: whether it
-    yields is judged when the request is decided."""
+    here, and a preference that could count for nothing (`verb` "prefer"). A pin on the cell is not asked about:
+    `held_refusal` asks it for a request."""
     reason = cells.cannot_hold(nurse.user.username, day, asked)
     match reason.why if reason else None:
         case "not_in_month":
@@ -138,6 +139,18 @@ def nurse_refusal(cells: MonthCells, nurse: NurseProfile, day: dt.date, asked: s
             return "shift", (f"You are on probation in {month_name(cells.month)}, so you work no {asked}, the night shift. You "
                              "can still ask for the day off.")
     return None
+
+
+def held_refusal(cells: MonthCells, nurse: NurseProfile, day: dt.date) -> str | None:
+    """Why a request on this date could never be accepted, by the pin on her cell: her own swap's or that of a cover she took,
+    neither of which a request's decision replaces. Said in her words, naming which of her choices holds the cell. Her
+    manager's pin yields to the decision, and no request's pin of hers is there while she can make one."""
+    reason = cells.may_change(nurse.user.username, day, REQUEST).reason
+    if reason is None:
+        return None
+    held = "Your approved swap" if reason.origin == PinOrigin.SWAP else "The cover you took"
+    return (f"{held} holds your cell on {long_date(day)}, so a request that day could not be accepted. Ask your manager if it "
+            "has to change.")
 
 
 def window_for(nurse: NurseProfile, month: dt.date) -> RequestWindow | None:
@@ -181,7 +194,11 @@ def make(user: User, day: dt.date, asked: str | None, reason: str, request: Http
         raise HttpError(409, no_requests(unit))
     code = current_code(asked) if asked else None
     shift = Shift.objects.filter(code=code, active=True).first() if code else None
-    refusal = nurse_refusal(MonthCells(unit, month), nurse, day, code)
+    cells = MonthCells(unit, month)
+    held = held_refusal(cells, nurse, day)
+    if held:
+        refuse((("date",), held))
+    refusal = nurse_refusal(cells, nurse, day, code)
     if refusal:
         refuse(((refusal[0],), refusal[1]))
     live = list(live_in(nurse, month, unit))

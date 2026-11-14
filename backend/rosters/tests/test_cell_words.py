@@ -30,16 +30,20 @@ def test_a_reason_reads_the_same_on_an_edit_a_requests_decision_and_a_swap(reaso
 
 @pytest.mark.parametrize("asking, sentence", [
     (EDIT, "This pin comes from an accepted request, on 21 June 2026, so change it there."),
-    (REQUEST, "An accepted request holds this cell on 21 June 2026, so change it there."),
     (SWAP, "An accepted request holds Amal Saleh's cell on 21 June 2026, so change it there."),
 ])
-def test_a_pin_that_does_not_yield_is_said_as_each_origin_has_said_it(asking, sentence):
+def test_a_requests_pin_sends_the_manager_to_the_request(asking, sentence):
     assert manager_said(Reason("held", origin="request"), "Amal Saleh", THE_21ST, JUNE, asking) == sentence
 
 
-def test_the_pin_is_named_by_its_origin():
-    assert manager_said(Reason("held", origin="swap"), "Amal Saleh", THE_21ST, JUNE, REQUEST) == (
-        "An accepted swap holds this cell on 21 June 2026, so change it there.")
+@pytest.mark.parametrize("origin, sentence", [
+    ("swap", "Amal Saleh's approved swap holds this cell on 21 June 2026. To grant the request, edit the cell first, which "
+             "replaces the swap's pin, then decide the request."),
+    ("cover", "The cover Amal Saleh took holds this cell on 21 June 2026. To grant the request, edit the cell first, which "
+              "replaces the cover's pin, then decide the request."),
+])
+def test_a_swaps_or_a_covers_pin_on_a_requests_decision_names_the_way_through(origin, sentence):
+    assert manager_said(Reason("held", origin=origin), "Amal Saleh", THE_21ST, JUNE, REQUEST) == sentence
 
 
 def test_a_bars_sentence_opens_with_whose_skill_it_is_and_its_last_counted_day():

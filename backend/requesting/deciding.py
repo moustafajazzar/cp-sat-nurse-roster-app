@@ -24,7 +24,7 @@ from nurses import membership
 from nurses.models import NurseProfile
 from requesting.models import Request, RequestState, RequestStep, Step, what_of
 from rosters import in_force
-from rosters.cell_words import manager_said
+from rosters.cell_words import holding, manager_said
 from rosters.cells import REQUEST, Holds, MonthCells, NewCell
 from rosters.drafts import FROZEN, current_code
 from rosters.models import PinEnded, PinnedCell, PinOrigin, Roster, RosterState, RosterVersion
@@ -99,7 +99,23 @@ def refusal_to_pin(decision: Decision, holds: Holds, cells: MonthCells | None = 
     cells = cells or MonthCells(decision.unit, decision.month)
     hospital_id, day = decision.nurse.user.username, decision.request.date
     reason = cells.may_change(hospital_id, day, REQUEST).reason or cells.cannot_hold(hospital_id, day, holds)
-    return manager_said(reason, decision.name, day, decision.month, REQUEST) if reason else None
+    if reason is None:
+        return None
+    already = _holding_already(cells, hospital_id, day, holds) if reason.why == "held" else None
+    if already is not None:
+        # An edit asking what a pin holds already changes nothing, so it would not end the pin. A clear gives the cell back to
+        # its solve, which on the roster in force is no change either when the solve held the same, so both ways are named.
+        return (f"{holding(reason, decision.name)} holds this cell on {long_date(day)} with {what_of(already.shift)} already, "
+                "as the request asks. To make it the request's promise, clear the cell or edit it to something else first, "
+                "then decide the request.")
+    return manager_said(reason, decision.name, day, decision.month, REQUEST)
+
+
+def _holding_already(cells: MonthCells, hospital_id: str, day: dt.date, holds: Holds) -> PinnedCell | None:
+    """The pin on the request's cell when it holds just what the decision would pin, a shift by any older code of it too."""
+    pin = next((pin for pin in cells.pins if pin.nurse.user.username == hospital_id and pin.date == day), None)
+    asked = holds.code if isinstance(holds, Shift) else current_code(holds) if holds else ""
+    return pin if pin is not None and pin.code == asked else None
 
 
 def _onto_roster(decision: Decision, shift: Shift | None, by: User, reason: str, request: HttpRequest) -> RosterVersion | None:
