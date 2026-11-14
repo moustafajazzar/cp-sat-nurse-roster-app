@@ -58,6 +58,40 @@ YIELDS: dict[Asking, set[PinOrigin]] = {
 }
 
 
+# Who may read a reason, or a violation a change newly breaks, in full. The unit's manager reads every one whatever its class,
+# as they read the leave and the attributes it rests on; the class is what a nurse may read, since she learns nothing of a
+# colleague that My roster would not show her. Each origin chooses from it between saying a reason in its reader's words and its
+# one hidden sentence, and lists no reason of its own as private.
+Reader = Literal["private", "shown", "hidden"]
+# The nurse it is about, and her manager: her own facts, said to her in full and to a colleague only as the hidden sentence.
+PRIVATE: Reader = "private"
+# Anyone: what My roster shows every reader, said as it is.
+SHOWN: Reader = "shown"
+# No nurse: a violation resting on who holds which attribute on a shift-day, which no nurse's roster shows.
+HIDDEN: Reader = "hidden"
+
+# Each reason's reader class. Her dates, her leave (a day off on My roster), her bar, her allowed shifts and the pin on her cell
+# (which choice of hers holds it is not on My roster) are hers. The unit's shifts, and who is on probation, are on My roster.
+READERS: dict[Why, Reader] = {
+    "not_in_month": PRIVATE,
+    "outside_dates": PRIVATE,
+    "leave": PRIVATE,
+    "shift_not_worked": SHOWN,
+    "barred": PRIVATE,
+    "shift_not_allowed": PRIVATE,
+    "night_on_probation": SHOWN,
+    "held": PRIVATE,
+}
+
+
+def reader_of(violation: dict) -> Reader:
+    """A violation's reader class: one on a nurse is hers, a headcount is what anyone can count on My roster, and any other on
+    a shift-day (a team leader, both genders, a skill need, or a rule not known here) would say who holds which attribute."""
+    if violation["nurse"]:
+        return PRIVATE
+    return SHOWN if violation["rule"] == "headcount" else HIDDEN
+
+
 @dataclass(frozen=True)
 class Reason:
     """Why a cell cannot hold what is asked, with the facts a sentence about it needs. `shift` is the code of a shift the
@@ -68,6 +102,11 @@ class Reason:
     skill: str | None = None
     last: dt.date | None = None
     origin: str | None = None
+
+    @property
+    def reader(self) -> Reader:
+        """Who may read it in full (`READERS`)."""
+        return READERS[self.why]
 
 
 @dataclass(frozen=True)
@@ -164,29 +203,43 @@ class MonthCells:
         reason = self.cannot_hold(hospital_id, day, holds)
         return Answer(reason=reason) if reason else self.may_change(hospital_id, day, asking)
 
+    def shown(self, hospital_id: str, day: dt.date, holds: Holds) -> Reason | None:
+        """The first reason this nurse's cell could not hold `holds` that anyone may read (`SHOWN`), whatever private reason
+        stands before it in the one order. An origin that says a private reason to a colleague only as its hidden sentence asks
+        this first: were a shown reason answered only when nothing private stood before it, saying it, or not, would tell her
+        which colleague had a private one."""
+        return next((reason for reason in self._reasons(self.nurses.get(hospital_id), day, holds) if reason.reader == SHOWN),
+                    None)
+
     def _cannot_hold(self, nurse: NurseProfile | None, day: dt.date, holds: Holds) -> Reason | None:
-        """The reasons in their one order: those about the day, which stop a day off too, then those about the shift."""
+        return next(self._reasons(nurse, day, holds), None)
+
+    def _reasons(self, nurse: NurseProfile | None, day: dt.date, holds: Holds):
+        """Every reason the cell could not hold `holds`, in their one order: those about the day, which stop a day off too, then
+        those about the shift. Read lazily, so asking for the first reads no further."""
         if nurse is None:
-            return Reason("not_in_month")
-        if membership.outside_dates(nurse, day):
-            return Reason("outside_dates")
-        if (nurse.pk, day) in self._leave:
-            return Reason("leave")
+            yield Reason("not_in_month")
+        elif membership.outside_dates(nurse, day):
+            yield Reason("outside_dates")
+        if nurse is not None and (nurse.pk, day) in self._leave:
+            yield Reason("leave")
         if not holds:
-            return None
+            return
         # A row is the unit's when the unit works its code now; a code is followed from any older one first.
         asked, shift = (holds.code, self._worked.get(holds.code)) if isinstance(holds, Shift) else (holds, self.shift(holds))
         if shift is None:
-            return Reason("shift_not_worked", shift=asked)
+            yield Reason("shift_not_worked", shift=asked)
+            return
+        if nurse is None:
+            return
         bar = self._bars.get(nurse.pk)
         if bar is not None and day >= bar.first:
-            return Reason("barred", skill=bar.skill, last=bar.last)
+            yield Reason("barred", skill=bar.skill, last=bar.last)
         allowed = membership.placement_in(nurse, self.month).allowed_shifts
         if allowed is not None and shift.code not in allowed:
-            return Reason("shift_not_allowed", shift=shift.code)
+            yield Reason("shift_not_allowed", shift=shift.code)
         if nurse.user.username in self.on_probation and shift.code == self._night_shift:
-            return Reason("night_on_probation", shift=shift.code)
-        return None
+            yield Reason("night_on_probation", shift=shift.code)
 
     @cached_property
     def solve_input(self) -> dict:

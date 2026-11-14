@@ -3,6 +3,7 @@ database, asks and reads the answer. The month is June 2026 of the four-nurse sa
 night shift; Amal may work either and Emad only Day. No test here has a roster unless it says so: a pin, and so the question,
 exists without one."""
 import datetime as dt
+from typing import get_args
 
 import pytest
 
@@ -10,7 +11,8 @@ from accounts.models import User
 from hospital.models import LeaveType, Shift, ShiftRename
 from nurses.models import Leave, NurseProfile, Placement
 from nurses.tests.conftest import make_unit
-from rosters.cells import COVER, EDIT, REQUEST, SWAP, Answer, MonthCells, NewCell, Reason, newly_broken
+from rosters.cells import (COVER, EDIT, HIDDEN, PRIVATE, REQUEST, SHOWN, SWAP, Answer, MonthCells, NewCell, Reason,
+                           Why, newly_broken, reader_of)
 from rosters.models import PinEnded, PinnedCell, PinOrigin, Roster, RosterState
 from rosters.pins import end
 from rosters.tests.conftest import approved_roster
@@ -338,6 +340,87 @@ class TestTheirOrder:
 
         assert cells.may_hold("Emad", day(3), SWAP, "N") == Answer(reason=Reason("shift_not_allowed", shift="N"))
         assert cells.may_hold("Emad", day(3), SWAP, None) == Answer(reason=Reason("held", origin="request"))
+
+
+# Each reason's reader class, as the spec states it: private to the nurse and her manager, or shown as it is because My roster
+# shows it.
+READERS = {"not_in_month": PRIVATE, "outside_dates": PRIVATE, "leave": PRIVATE, "shift_not_worked": SHOWN, "barred": PRIVATE,
+           "shift_not_allowed": PRIVATE, "night_on_probation": SHOWN, "held": PRIVATE}
+
+
+class TestWhoReadsEachReason:
+    """The unit's manager reads every reason in full whatever its class; the class says what a nurse may read."""
+
+    @pytest.mark.parametrize("why, reader", READERS.items())
+    def test_each_reason_states_its_reader_class(self, why, reader):
+        assert Reason(why).reader == reader
+
+    @pytest.mark.parametrize("origin", list(PinOrigin))
+    def test_a_pin_that_does_not_yield_is_private_whatever_its_origin(self, origin):
+        assert Reason("held", origin=origin).reader == PRIVATE
+
+    def test_a_new_reason_is_classed_here_before_it_can_be_given(self):
+        assert set(READERS) == set(get_args(Why))
+
+
+class TestWhatAnyoneMaySee:
+    """A shown reason is answered on its own, so that a private reason ahead of it in the one order cannot hide it: a reader
+    told only the shown one learns nothing of the private one."""
+
+    def test_a_shift_the_unit_does_not_work_is_shown_whatever_stands_before_it(self, er, make_user):
+        Leave.objects.create(nurse=profile("Amal"), date=day(3), leave_type=LeaveType.objects.first(), recorded_by=manager())
+        NurseProfile.objects.filter(user__username="Emad").update(end_date=day(20))
+        nurse_in(make_unit("ICU"), make_user, "Faris")
+
+        cells = MonthCells(er, JUNE)
+
+        assert cells.cannot_hold("Amal", day(3), "A") == Reason("leave")
+        assert cells.shown("Amal", day(3), "A") == Reason("shift_not_worked", shift="A")
+        assert cells.shown("Emad", day(21), "A") == Reason("shift_not_worked", shift="A")
+        assert cells.shown("Faris", day(3), "A") == Reason("shift_not_worked", shift="A")
+
+    def test_the_night_shift_on_probation_is_shown_whatever_stands_before_it(self, er, make_user):
+        add_faten(er, make_user)
+        holding("Faten", "BLS", day(15), required=True)
+
+        cells = MonthCells(er, JUNE)
+
+        assert cells.cannot_hold("Faten", day(16), "N") == Reason("barred", skill="BLS", last=day(15))
+        assert cells.shown("Faten", day(16), "N") == Reason("night_on_probation", shift="N")
+
+    def test_a_cell_with_only_private_reasons_or_none_shows_nothing(self, er):
+        Leave.objects.create(nurse=profile("Amal"), date=day(3), leave_type=LeaveType.objects.first(), recorded_by=manager())
+        NurseProfile.objects.filter(user__username="Emad").update(end_date=day(20))
+
+        cells = MonthCells(er, JUNE)
+
+        assert cells.shown("Amal", day(3), "N") is None
+        assert cells.shown("Emad", day(3), "N") is None
+        assert cells.shown("Emad", day(21), "N") is None
+        assert cells.shown("Nobody", day(3), "N") is None
+        assert cells.shown("Amal", day(4), None) is None
+        assert cells.shown("Amal", day(4), "N") is None
+
+
+class TestWhoReadsANewlyBrokenViolation:
+    """A violation a change newly breaks is classed as a reason is: the nurse's own is private to her, a headcount anyone can
+    count is shown, and one on who holds which attribute on a shift-day is hidden from every nurse."""
+
+    def test_a_violation_on_a_nurse_is_private_to_her(self):
+        assert reader_of(OVERTIME) == PRIVATE
+        assert reader_of({"rule": "following", "nurse": "Faten", "date": "2026-06-05", "text": "following: ..."}) == PRIVATE
+
+    def test_a_headcount_is_shown(self):
+        assert reader_of(headcount(1)) == SHOWN
+
+    @pytest.mark.parametrize("violation", [
+        {"rule": "team_leader", "nurse": None, "date": "2026-06-09", "text": "team leader: 2026-06-09 D has none", "shift": "D"},
+        {"rule": "gender", "nurse": None, "date": "2026-06-09", "text": "gender: 2026-06-09 N only F", "shift": "N"},
+        {"rule": "skill_need", "nurse": None, "date": "2026-06-09", "text": "skill need: ...", "shift": "N"},
+        {"rule": "a_rule_not_yet_known", "nurse": None, "date": None, "text": "something new"},
+    ], ids=["team_leader", "gender", "skill_need", "unknown"])
+    def test_any_other_violation_with_no_nurse_is_hidden(self, violation):
+        assert reader_of(violation) == HIDDEN
 
 
 def short_of_day_nurses(unit) -> None:
