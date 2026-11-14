@@ -185,7 +185,7 @@ def judge(roster: Roster, day: dt.date, shift: Shift) -> CoverJudged:
     month = CoverMonth(roster, day, shift)
     if month.before.reason:
         return CoverJudged(reason=f"The roster in force cannot be checked: {month.before.reason}")
-    judged = CoverJudged(lack=[_lack_words(row) for row in _on(month.before.answer["violations"], day, shift.code)])
+    judged = CoverJudged(lack=[_lack_words(row) for row in _on(month.before.violations, day, shift.code)])
     judged.full = month.full()
     if judged.full:
         return judged
@@ -206,7 +206,7 @@ def judge(roster: Roster, day: dt.date, shift: Shift) -> CoverJudged:
         judged.nurses.append(CouldTake(
             hospital_id=hospital_id, name=nurse.user.full_name or hospital_id, worked=row["hours_worked"],
             owed=row["required"] if counted else None, overtime_this_year=row["carry_over"]["ytd_overtime"],
-            makes_whole=not _on(after.answer["violations"], day, shift.code),
+            makes_whole=not _on(after.violations, day, shift.code),
             replaces=pin.origin if pin is not None else None))
     judged.nurses.sort(key=lambda could: (could.balance, could.overtime_this_year, could.name.casefold(), could.hospital_id))
     return judged

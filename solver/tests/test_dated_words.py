@@ -113,6 +113,16 @@ def test_no_text_of_a_result_counts_a_day():
     assert [text for text in said if DAY_NUMBER.search(text) or DAY_BEFORE_A_DATE.search(text)] == []
 
 
+def test_no_precheck_issue_counts_a_day():
+    raw, _ = a_month_that_breaks_its_rules()
+
+    issues = precheck(load_request(raw).problem)
+
+    assert "2026-06-10: headcounts need 2 nurses but only 0 are not on leave" in issues
+    assert "Badr: pinned N on 2026-06-22 and D on 2026-06-23 is a forbidden succession" in issues
+    assert [issue for issue in issues if DAY_NUMBER.search(issue) or DAY_BEFORE_A_DATE.search(issue)] == []
+
+
 def test_a_forbidden_succession_names_both_its_days_and_is_dated_on_the_second():
     across, *_ = [row for row in checked()["violations"] if row["rule"] == "succession"]
 

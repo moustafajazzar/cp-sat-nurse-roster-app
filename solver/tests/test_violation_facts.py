@@ -75,12 +75,12 @@ def test_a_match_in_a_rules_explanation_states_the_same_facts():
 
     headcount = next(m for m in matches["headcount"] if m["date"] == "2026-06-09" and m["shift"] == "D")
     need = next(m for m in matches["skill_need"] if m["date"] == "2026-06-09")
-    restricted_free = matches["nurse_shortfall"][0]
+    hours_short = matches["nurse_shortfall"][0]
 
     assert headcount == {"nurse": None, "date": "2026-06-09", "amount": 1, "elapsed": False, "text": headcount["text"],
                          "shift": "D", "present": 0, "minimum": 1, "maximum": 1}
     assert need["shift"] == "N" and not FACTS - {"shift"} & set(need)
-    assert not FACTS & set(restricted_free)
+    assert not FACTS & set(hours_short)
 
 
 def test_a_result_states_the_same_facts_as_a_grid_check():

@@ -25,7 +25,7 @@ class MonthInfo:
     first_weekday: int          # 0 = Monday
     ramadan_days: list[int]     # 0-based day indices that fall in Ramadan
 
-    # ---- dates <-> 0-based day indices (the only place that knows the year and month) ----
+    # ---- dates <-> 0-based day indices (a day outside the month is refused; `Problem.day_words` says one in words) ----
     @property
     def label(self) -> str:
         return f"{self.year:04d}-{self.month:02d}"

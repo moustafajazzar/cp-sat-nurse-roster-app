@@ -419,7 +419,7 @@ def test_the_sample_carries_a_nurse_on_probation_and_her_result_says_she_counted
 
 def test_validate_names_the_nurse_the_day_her_preceptors_shift_and_hers(client, sample):
     """Amal works D on 1 and 2 June, nobody else works: Faten on D on 1 June follows; off on 2 June she leaves a followable
-    day off, so her D on 3 June, when Amal is off, breaks the rule (days counted from 0)."""
+    day off, so her D on 3 June, when Amal is off, breaks the rule."""
     req = with_faten(sample)
     roster = {n["id"]: {f"2026-06-{d:02d}": "" for d in range(1, 31)} for n in req["nurses"]}
     roster["Amal"].update({"2026-06-01": "D", "2026-06-02": "D"})
