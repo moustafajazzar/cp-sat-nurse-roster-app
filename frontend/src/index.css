@@ -150,3 +150,21 @@
         display: table-header-group;
     }
 }
+
+/* PROTOTYPE (roster workspace): the decided "Ward" design language, scoped to the prototype's frame. */
+.ward {
+    --background: #f6f8f9; --foreground: #14202a; --card: #ffffff; --card-foreground: #14202a; --popover: #ffffff; --popover-foreground: #14202a;
+    --primary: #0e7c86; --primary-foreground: #ffffff; --secondary: #eef2f4; --secondary-foreground: #14202a;
+    --muted: #eef2f4; --muted-foreground: #5b6b78; --accent: #dff1f2; --accent-foreground: #14202a;
+    --destructive: #c2322b; --border: #dbe2e7; --input: #c3ced6; --ring: #0e7c86;
+    --ward-surface: #ffffff; --ward-warn: #a15c00; --ward-warn-soft: #fdf0dc; --ward-ok: #1d7a45; --ward-ok-soft: #e1f3e8; --ward-bad-soft: #fbe7e5;
+    font-family: 'Geist Variable', sans-serif;
+}
+.dark .ward, .ward.dark {
+    --background: #0f1519; --foreground: #e3eaee; --card: #151d22; --card-foreground: #e3eaee; --popover: #151d22; --popover-foreground: #e3eaee;
+    --primary: #3fb6bf; --primary-foreground: #06191b; --secondary: #1c262c; --secondary-foreground: #e3eaee;
+    --muted: #1c262c; --muted-foreground: #93a3ae; --accent: #123338; --accent-foreground: #e3eaee;
+    --destructive: #f0776f; --border: #26323a; --input: #34434d; --ring: #3fb6bf;
+    --ward-surface: #151d22; --ward-warn: #f2b25c; --ward-warn-soft: #3a2a12; --ward-ok: #63c98d; --ward-ok-soft: #143222; --ward-bad-soft: #3a1a18;
+    color-scheme: dark;
+}

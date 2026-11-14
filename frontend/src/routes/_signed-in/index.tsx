@@ -1,16 +1,20 @@
 import { createFileRoute, Link, redirect, useRouteContext } from "@tanstack/react-router"
 import type { ReactNode } from "react"
+import { z } from "zod"
 
 import { useGetMyRoster, useGetMyUnit, useListSubmittedRosters, useListUnits } from "@/api/generated/endpoints"
 import { Role } from "@/api/generated/model"
 import { ExpiriesCount } from "@/components/expiries"
 import { ROLE_NAMES } from "@/roles"
+import { NursePhonePrototype } from "@/components/nurse-phone-prototype"
 import { hospitalTime, monthName } from "@/lib/utils"
 
 export const Route = createFileRoute("/_signed-in/")({
   beforeLoad: ({ context }) => {
     if (context.user.role === Role.system_admin) throw redirect({ to: "/health" })
   },
+  // PROTOTYPE (Staff Nurse phone): ?variant=a|b|c shows a throwaway phone home.
+  validateSearch: (search) => z.object({ variant: z.enum(["a", "b", "c"]).optional() }).parse(search),
   staticData: { title: "Home" },
   component: HomePage,
 })
@@ -124,6 +128,8 @@ const HOME_OF: Record<Exclude<Role, "system_admin">, () => ReactNode> = {
 function HomePage() {
   const { user } = useRouteContext({ from: "/_signed-in" })
   const Home = HOME_OF[user.role as keyof typeof HOME_OF]
+  const { variant } = Route.useSearch() as { variant?: "a" | "b" | "c" }
+  if (variant && user.role === Role.staff_nurse) return <NursePhonePrototype variant={variant} user={user} />
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-2">
       <h1 className="text-xl font-medium">{user.full_name || user.username}</h1>

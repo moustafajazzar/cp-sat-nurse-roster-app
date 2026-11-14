@@ -16,7 +16,9 @@ export default defineConfig({
   },
   server: {
     // In development the browser talks to Vite, and Vite passes the API on to Django.
-    proxy: { "/api": process.env.VITE_API_PROXY ?? "http://localhost:8000" },
+    // PROTOTYPE: against an e2e stack, the Origin header is rewritten to the stack's own, so its CSRF check passes.
+    proxy: { "/api": { target: process.env.VITE_API_PROXY ?? "http://localhost:8000", changeOrigin: true,
+      headers: process.env.VITE_API_PROXY ? { Origin: process.env.VITE_API_PROXY } : {} } },
   },
   test: {
     environment: "jsdom",
