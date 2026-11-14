@@ -69,8 +69,9 @@ import {
 } from "@/lib/unit-rules-words"
 import type { Explained } from "@/lib/weights"
 import { onlyFor } from "@/session"
+import { FormLayoutFrame, SaveBar, useFormLayout } from "@/components/form-layout-prototype"
 
-const searchSchema = z.object({ unit: z.string().optional().catch(undefined) })
+const searchSchema = z.object({ unit: z.string().optional().catch(undefined), variant: z.enum(["a", "b", "c"]).optional().catch(undefined) })
 
 export const Route = createFileRoute("/_signed-in/unit-rules")({
   validateSearch: (search) => searchSchema.parse(search),
@@ -397,6 +398,7 @@ function RulesForm({ unitId, state }: { unitId: string; state: UnitRulesState })
     ),
   )
   const refused = update.isError && serverErrors(update.error, formPath).length > 0
+  const layout = useFormLayout()
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
@@ -489,7 +491,9 @@ function RulesForm({ unitId, state }: { unitId: string; state: UnitRulesState })
       <p role="status" className="text-sm text-muted-foreground empty:sr-only">
         {update.isSuccess && !isDirty ? "Saved." : ""}
       </p>
-      <Button type="submit" className="self-start" disabled={update.isPending || !(isDirty || state.needs_review)}>Save</Button>
+      {layout
+        ? <SaveBar dirty={isDirty}><Button type="submit" disabled={update.isPending || !(isDirty || state.needs_review)}>Save rules</Button></SaveBar>
+        : <Button type="submit" className="self-start" disabled={update.isPending || !(isDirty || state.needs_review)}>Save</Button>}
     </form>
   )
 }
@@ -609,13 +613,13 @@ function ChosenUnitRules({ unitId, mayChange }: { unitId: string; mayChange: boo
 
 function UnitRulesPage() {
   const { user } = useRouteContext({ from: "/_signed-in" })
-  const { unit: inAddress } = Route.useSearch()
+  const { unit: inAddress, variant } = Route.useSearch() as { unit?: string; variant?: "a" | "b" | "c" }
   const navigate = useNavigate({ from: Route.fullPath })
   const { units, chosen } = useChosenUnit(user, inAddress)
   const mayChange = user.role === Role.unit_manager
 
-  return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-4">
+  const page = (
+    <div className={variant ? "flex flex-col gap-4" : "mx-auto flex max-w-3xl flex-col gap-4"}>
       <h1 className="text-xl font-medium">{mayChange && chosen ? `Unit rules of ${chosen.name}` : "Unit rules"}</h1>
       <p className="text-muted-foreground">
         The rules this unit rosters by, on top of the hospital rules.
@@ -630,5 +634,9 @@ function UnitRulesPage() {
       {chosen && <ChosenUnitRules unitId={chosen.id} mayChange={mayChange} />}
     </div>
   )
+  // PROTOTYPE (forms pattern): ?variant=a|b|c lays the same form out three ways.
+  return variant ? <FormLayoutFrame variant={variant} sections={RULE_SECTIONS}>{page}</FormLayoutFrame> : page
 }
+
+const RULE_SECTIONS = ["Shifts", "Headcounts", "Who a shift needs", "Skill needs", "Score targets", "Night rest", "Runs of shifts", "Fairness", "Weekends and switches", "Requests and solves"]
 

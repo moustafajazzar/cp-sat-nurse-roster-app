@@ -28,11 +28,13 @@ import { FieldGroup } from "@/components/ui/field"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { serverErrors, showServerErrors } from "@/lib/server-errors"
 import { useEditing } from "@/lib/use-editing"
-import { scrollableRegion } from "@/lib/utils"
+import { cn, readableOn, scrollableRegion } from "@/lib/utils"
 import { useFocusOnOpen } from "@/lib/use-focus-on-open"
+import { FormLayoutFrame } from "@/components/form-layout-prototype"
 
 /** Open to every role, which may all read the catalogue. Only the CNO gets the form. */
 export const Route = createFileRoute("/_signed-in/shifts")({
+  validateSearch: (search) => z.object({ variant: z.enum(["a", "b", "c"]).optional().catch(undefined) }).parse(search),
   staticData: { title: "Shifts" },
   component: ShiftsPage,
 })
@@ -181,6 +183,13 @@ function ShiftsPage() {
   const { editing, start, finish } = useEditing<ShiftSchema>()
   const [done, setDone] = useState("")
   const mayChange = user.role === Role.cno
+  // PROTOTYPE (forms pattern): ?variant=a|b|c lays the catalogue out three ways.
+  const variant = (Route.useSearch() as { variant?: "a" | "b" | "c" }).variant
+  if (variant && mayChange && shifts.data) return (
+    <FormLayoutFrame variant={variant} sections={[]}>
+      <ShiftsPrototype variant={variant} shifts={shifts.data} editing={editing} start={start} finish={finish} done={done} setDone={setDone} />
+    </FormLayoutFrame>
+  )
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-4">
@@ -208,6 +217,67 @@ function ShiftsPage() {
               onDone={(message) => { setDone(message); finish() }} />
           </CardContent>
         </Card>
+      )}
+    </div>
+  )
+}
+
+/* PROTOTYPE (forms pattern): the Shifts catalogue three ways. A: the table, the form below it. B: Edit opens the form in a side
+   drawer. C: the list beside the chosen shift's detail. */
+function ShiftsPrototype({ variant, shifts, editing, start, finish, done, setDone }: {
+  variant: "a" | "b" | "c"; shifts: ShiftSchema[]; editing: ShiftSchema | null; start: (shift: ShiftSchema, button: HTMLElement) => void
+  finish: () => void; done: string; setDone: (message: string) => void
+}) {
+  const [adding, setAdding] = useState(false)
+  const open = editing !== null || adding
+  const close = () => { setAdding(false); finish() }
+  const form = (
+    <ShiftForm key={editing?.id ?? "new"} shift={editing} onCancel={close} onDone={(message) => { setDone(message); close() }} />
+  )
+  const title = editing ? <>Edit <span translate="no">{editing.code}</span></> : "Add a shift"
+  const head = (
+    <div className="flex flex-wrap items-center gap-3">
+      <h1 className="text-xl font-semibold">Shifts</h1><span className="text-sm text-muted-foreground">Every shift a unit may work. Times are hospital time.</span>
+      <span className="flex-1" /><Button onClick={() => { finish(); setAdding(true) }}>Add a shift</Button>
+    </div>
+  )
+  const status = <p role="status" className="text-sm text-primary empty:sr-only">{done}</p>
+  if (variant === "c") {
+    const chosen = editing
+    return (
+      <div className="flex flex-col gap-4">
+        {head}{status}
+        <div className="grid gap-4 md:grid-cols-[18rem_minmax(0,1fr)]">
+          <ul className={cn("flex flex-col divide-y rounded-lg border bg-[var(--ward-surface)]", open && "max-md:hidden")}>
+            {shifts.map((shift) => (
+              <li key={shift.id}><button type="button" onClick={(event) => { setAdding(false); start(shift, event.currentTarget) }}
+                className={cn("flex w-full items-center gap-3 px-3 py-2.5 text-start hover:bg-muted", chosen?.id === shift.id && "bg-accent")}>
+                <span className="grid size-8 place-items-center rounded-[5px] text-sm font-bold" ref={(el) => { if (el) { el.style.backgroundColor = shift.colour; el.style.color = readableOn(shift.colour) } }}>{shift.code}</span>
+                <span className="min-w-0 flex-1"><span className="block font-medium">{shift.display_name}</span><span className="block text-xs text-muted-foreground tabular-nums">{shift.start_time}–{shift.end_time} · {shift.hours} h</span></span>
+                {!shift.active && <span className="text-xs text-muted-foreground">Retired</span>}
+              </button></li>
+            ))}
+          </ul>
+          <section className={cn("rounded-lg border bg-[var(--ward-surface)] p-4", !open && "max-md:hidden")}>
+            {open ? <><button type="button" onClick={close} className="mb-2 text-sm font-medium text-primary md:hidden">‹ All shifts</button><h2 className="mb-3 text-base font-semibold">{title}</h2>{form}</>
+              : <p className="text-sm text-muted-foreground">Choose a shift to see and change it, or add one.</p>}
+          </section>
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-4">
+      {head}{status}
+      <div className="rounded-lg border bg-[var(--ward-surface)] p-2"><ShiftsTable shifts={shifts} onEdit={(shift, button) => { setDone(""); setAdding(false); start(shift, button) }} /></div>
+      {variant === "a" && open && <section className="max-w-xl rounded-lg border bg-[var(--ward-surface)] p-4"><h2 className="mb-3 text-base font-semibold">{title}</h2>{form}</section>}
+      {variant === "b" && open && (
+        <div className="fixed inset-0 z-40 flex justify-end bg-black/30" onClick={close}>
+          <aside aria-label="Shift" onClick={(event) => event.stopPropagation()} className="h-full w-[28rem] max-w-full overflow-y-auto border-s bg-[var(--ward-surface)] p-5 shadow-xl">
+            <div className="mb-4 flex items-center"><h2 className="text-base font-semibold">{title}</h2><span className="flex-1" /><Button variant="outline" size="sm" onClick={close}>Close</Button></div>
+            {form}
+          </aside>
+        </div>
       )}
     </div>
   )

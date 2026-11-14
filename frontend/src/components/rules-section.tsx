@@ -2,9 +2,12 @@ import type { ReactNode } from "react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { FieldDescription } from "@/components/ui/field"
+import { LayoutSection, useFormLayout } from "@/components/form-layout-prototype"
 
 /** A section of a rules page: a region named by its heading, whichever role is reading. */
 export function Section({ title, description, children }: { title: string; description?: ReactNode; children: ReactNode }) {
+  // PROTOTYPE (forms pattern): inside a prototype frame the variant lays the section out.
+  if (useFormLayout()) return <LayoutSection title={title} description={description}>{children}</LayoutSection>
   const id = `section-${title.toLowerCase().replaceAll(" ", "-")}`
   return (
     <Card role="region" aria-labelledby={id}>
