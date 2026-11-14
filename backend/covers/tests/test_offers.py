@@ -6,7 +6,7 @@ import datetime as dt
 
 import pytest
 
-from accounts.models import Role, User
+from accounts.models import Role
 from audit.models import AuditEntry
 from covers.models import Cover, CoverOffer, CoverState
 from covers.tasks import expire_covers
@@ -18,6 +18,7 @@ from notifications.tests.test_events import as_user, told
 from rosters.models import PinnedCell, PinOrigin, Roster, VersionOrigin
 from rosters.tests.test_pins import clear, icu, off, pin
 from rosters.tests.test_versions import changed
+from swaps.tests.private_facts import with_words
 
 pytestmark = pytest.mark.django_db
 
@@ -135,41 +136,16 @@ class TestOffering:
             assert (theirs.status_code, theirs.content) == (none.status_code, none.content) == (404, none.content)
 
 
-def _transfer(mona, unit):
-    other = User.objects.create_user("omar", "correct-horse-battery", Role.UNIT_MANAGER)
-    Placement.objects.create(nurse=NurseProfile.objects.get(user__username="Emad"), unit=icu(other),
-                             from_month=dt.date(2026, 6, 1))
-
-
-def _end_date(mona, unit):
-    NurseProfile.objects.filter(user__username="Emad").update(end_date=dt.date(2026, 6, 8))
-
-
-def _leave(mona, unit):
-    ok(record_leave(mona, unit, "Emad", 9), 201)
-
-
-def _barred(mona, unit):
-    from rosters.tests.test_review import holding
-    holding("Emad", "BLS", dt.date(2026, 6, 8), required=True)
-
-
-def _request(mona, unit):
-    from requesting.tests.conftest import asked, decided, opened as requests_opened
-    requests_opened(mona, unit)
-    decided(mona, unit, asked(as_user("Emad"), 9)["id"], "accept")
-
-
-# Each reason the cell judgement classes as private (`rosters.cells.READERS`), as it comes to stand on Emad's cell on the 9th:
-# {reason: (the fact that sets it, the cover's shift, what he reads)}. Emad works only Day.
-PRIVATE_REASONS = {
-    "not_in_month": (_transfer, "D", "You have no days on the ER roster in June 2026, so you cannot take this cover."),
-    "outside_dates": (_end_date, "D", "9 June 2026 is outside your dates on the roster, so you cannot take this cover."),
-    "leave": (_leave, "D", "You are on leave on 9 June 2026, so you cannot take this cover."),
-    "barred": (_barred, "D", "Your BLS, required to work, counted until 8 June 2026, so you cannot take this cover."),
-    "shift_not_allowed": (None, "N", "N is not one of the shifts you work, so you cannot take this cover."),
-    "held": (_request, "D", "Your accepted request holds your cell on 9 June 2026, so you cannot take this cover."),
-}
+# Each reason the cell judgement classes as private, as it comes to stand on Emad's cell on the 9th, set as for a swap:
+# {reason: (the fact that sets it, the cover's shift, what he reads)}.
+PRIVATE_REASONS = with_words({
+    "not_in_month": ("You have no days on the ER roster in June 2026, so you cannot take this cover.",),
+    "outside_dates": ("9 June 2026 is outside your dates on the roster, so you cannot take this cover.",),
+    "leave": ("You are on leave on 9 June 2026, so you cannot take this cover.",),
+    "barred": ("Your BLS, required to work, counted until 8 June 2026, so you cannot take this cover.",),
+    "shift_not_allowed": ("N is not one of the shifts you work, so you cannot take this cover.",),
+    "held": ("Your accepted request holds your cell on 9 June 2026, so you cannot take this cover.",),
+})
 
 
 class TestAccepting:
@@ -266,10 +242,6 @@ class TestAccepting:
 
         assert refusals(answer(as_user("Emad"), cover_id, "accept"), 409) == [
             "Taking this cover would break the unit's rules: headcount: 2026-06-25 D = 2, want 1..1"]
-
-    def test_every_private_reason_is_here(self):
-        from rosters.cells import PRIVATE, READERS
-        assert set(PRIVATE_REASONS) == {why for why, reader in READERS.items() if reader == PRIVATE}
 
     def test_a_rule_it_would_now_break_for_her_is_said_in_full(self, in_force, mona):
         """Emad works Day on the 7th, 8th, 10th and 12th. Once the manager puts him on the 11th too, the 9th would make a run of

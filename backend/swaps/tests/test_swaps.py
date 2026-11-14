@@ -9,7 +9,7 @@ from audit.models import AuditEntry
 from conftest import post
 from hospital.models import FixedRamadanMonth, LeaveType
 from notifications.models import Event, Notification
-from notifications.tests.test_events import as_user, told
+from notifications.tests.test_events import told
 from nurses.models import NurseProfile, Placement
 from requesting.tests.conftest import asked, decided as request_decided, opened
 from rosters.models import PinEnded, PinnedCell, PinOrigin, Roster, RosterVersion, VersionOrigin
@@ -22,6 +22,7 @@ from swaps.models import Swap, SwapState
 from swaps.tasks import expire_swaps
 from swaps.tests.conftest import (MONTH, SOUND_SWAP, act, acted, cell, decide, decided, decision, mine, ok, propose, proposed,
                                   refusals, url)
+from swaps.tests.private_facts import PRIVATE_FACTS, accepted_request, leave, with_words
 
 pytestmark = pytest.mark.django_db
 
@@ -213,7 +214,7 @@ class TestTheProposersOwnFacts:
         assert any("Amal" in sentence for sentence in said)
 
     def test_what_their_cell_cannot_hold_is_said_before_their_accepted_request(self, in_force, nurse, mona):
-        _request(mona, in_force)
+        accepted_request(mona, in_force)
 
         assert refusals(propose(nurse("Emad"), cell("Emad", 9, "N"))) == ["N is not one of the shifts you work."]
 
@@ -268,19 +269,6 @@ def nothing_hidden_in(text: str) -> None:
     assert [word for word in FORBIDDEN if word in lowered] == []
 
 
-def _leave(mona, unit):
-    assert leave_for(mona, unit, "Emad", 9).status_code == 201
-
-
-def _end_date(mona, unit):
-    NurseProfile.objects.filter(user__username="Emad").update(end_date=dt.date(2026, 6, 8))
-
-
-def _transfer(mona, unit):
-    other = User.objects.create_user("omar", "correct-horse-battery", Role.UNIT_MANAGER)
-    Placement.objects.create(nurse=profile("Emad"), unit=icu(other), from_month=dt.date(2026, 6, 1))
-
-
 def _deactivated(mona, unit):
     User.objects.filter(username="Emad").update(is_active=False)
 
@@ -309,42 +297,30 @@ def _hours_worked_ahead(mona, unit):
     NurseProfile.objects.filter(user__username="Emad").update(ytd_overtime=NEAR_THE_CAP, hours_balance=-24)
 
 
-def _barred(mona, unit):
-    """Emad's BLS, required to work, lasted to the 8th, recorded since the approval."""
-    from rosters.tests.test_review import holding
-    holding("Emad", "BLS", dt.date(2026, 6, 8), required=True)
-
-
-def _request(mona, unit):
-    opened(mona, unit)
-    made = asked(as_user("Emad"), 9)
-    request_decided(mona, unit, made["id"], "accept")
-
-
-# Each reason the cell judgement classes as private (`rosters.cells.READERS`), as it comes to stand on Emad's cell on the 9th:
-# {reason: (the fact that sets it, the shift asked of his cell, what he reads of it himself, what the manager reads)}.
-PRIVATE_REASONS = {
-    "not_in_month": (_transfer, "D", "You have no days on this roster in June 2026.",
-                     "Emad is not on this unit's roster for June 2026."),
-    "outside_dates": (_end_date, "D", "9 June 2026 is outside your dates on the roster.",
+# Each reason the cell judgement classes as private, as it comes to stand on Emad's cell on the 9th: {reason: (the fact that
+# sets it, the shift asked of his cell, what he reads of it himself, what the manager reads)}.
+PRIVATE_REASONS = with_words({
+    "not_in_month": ("You have no days on this roster in June 2026.", "Emad is not on this unit's roster for June 2026."),
+    "outside_dates": ("9 June 2026 is outside your dates on the roster.",
                       "9 June 2026 is outside Emad's dates, so there is nothing to pin."),
-    "leave": (_leave, "D", "You are on leave on 9 June 2026, so there is nothing to swap that day.",
+    "leave": ("You are on leave on 9 June 2026, so there is nothing to swap that day.",
               "Emad is on leave on 9 June 2026, and leave wins over a pin."),
-    "barred": (_barred, "D", "Your BLS, required to work, counted until 8 June 2026, so you can work no shift on 9 June 2026.",
+    "barred": ("Your BLS, required to work, counted until 8 June 2026, so you can work no shift on 9 June 2026.",
                "Emad's BLS, required to work, counted until 8 June 2026, so Emad can work no shift on 9 June 2026."),
-    "shift_not_allowed": (None, "N", "N is not one of the shifts you work.", "N is not one of Emad's allowed shifts."),
-    "held": (_request, "D", "Your accepted request holds your cell on 9 June 2026, so a swap cannot change it.",
+    "shift_not_allowed": ("N is not one of the shifts you work.", "N is not one of Emad's allowed shifts."),
+    "held": ("Your accepted request holds your cell on 9 June 2026, so a swap cannot change it.",
              "An accepted request holds Emad's cell on 9 June 2026, so change it there."),
-}
+})
 
 
 class TestEachPrivateReason:
-    """Worth the user's review. Each private reason on Emad's cell reaches a colleague who proposes it as the one hidden
-    sentence, reaches Emad himself in full, and the manager reads it in full."""
+    """A colleague who proposes a swap must not learn which of Emad's private facts stands on his cell, so each private reason
+    there reaches the colleague as the one hidden sentence, while Emad himself and the manager read it in full."""
 
     def test_every_private_reason_is_here(self):
+        """Here for a swap and, through the same facts (`with_words`), for a cover."""
         from rosters.cells import PRIVATE, READERS
-        assert set(PRIVATE_REASONS) == {why for why, reader in READERS.items() if reader == PRIVATE}
+        assert set(PRIVATE_FACTS) == {why for why, reader in READERS.items() if reader == PRIVATE}
 
     @pytest.mark.parametrize("why", PRIVATE_REASONS)
     def test_a_colleague_reads_the_hidden_sentence(self, in_force, nurse, mona, why):
@@ -419,7 +395,7 @@ class TestWhatTheProposerMayNotLearn:
         """Emad is off on the 9th, and on leave in one run: asking for what the cell holds, or for a shift the unit does not
         work, gets the same answer either way."""
         if on_leave:
-            _leave(mona, in_force)
+            leave(mona, in_force)
         badr = nurse("Badr")
 
         assert refusals(propose(badr, cell("Badr", 9), cell("Emad", 9))) == ["Emad's cell on 9 June 2026 is already a day off."]
