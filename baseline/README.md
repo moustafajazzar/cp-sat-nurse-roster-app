@@ -21,7 +21,8 @@ request window and ICU has a draft. The Day view shows 15 December 2026.
 **Accounts.** System Admin `admin`. CNO `carla`. Deputy CNO `hala`. Unit Manager `omar`, who manages ICU (64 nurses) and
 has a nurse profile there, so he also gets My roster and My month. Staff Nurse `Amal` on ER (4 nurses). `mona`, ER's
 manager, was captured for one page only: Requests with an open window. Each role saw only the pages that `onlyFor` allows
-it. No final address differs from the one asked for, and no page logged a console error.
+it. Every final address matches the one asked for, except the System Admin's Home, which redirects to Health, so
+their phone menu was shot over Health. No page logged a console error.
 
 **Counts.** 77 pages × 2 widths, plus 5 phone menus: 159 images. The header links per role are System Admin 5, CNO 14,
 Deputy CNO 13, Unit Manager with a nurse profile 16, Staff Nurse 9 (Change password left out). Notifications, reached
@@ -55,13 +56,13 @@ These are what showed up while capturing. They are observations, not decisions. 
    ("Overtime this ye…") in `deputy-cno/rostering-attributes-desktop.png` and `unit-manager/rostering-attributes-desktop.png`.
 6. **The roster grid doesn't use the width it has.** At 1440 px the grid is cut off around day 28 inside a column about
    1150 px wide, with white space on both sides, even for ER's 4 nurses (`staff-nurse/my-roster-desktop.png`,
-   `cno/unit-roster-er-desktop.png`, `unit-manager/roster-desktop.png`). The print view fits all 31 days plus the totals
-   into the same width (`staff-nurse/my-roster-print-desktop.png`).
+   `cno/unit-roster-er-desktop.png`, `unit-manager/roster-desktop.png`). The print view, which uses the whole window
+   (x = 16 to about 1424), fits all 31 days plus the totals (`staff-nurse/my-roster-print-desktop.png`).
 
 ### At 375 px
 
-7. **No page scrolls sideways**: for every shot `scrollWidth` equals the viewport. Every table, though, is cut off inside
-   its own scroll area with no visible cue, often hiding the actions:
+7. **No page scrolls sideways**: for every shot `scrollWidth` equals the viewport. Most wide tables, though, are cut off
+   inside their own scroll area with no visible cue, often hiding the actions:
    - Users: Status and the Correct name, Deactivate and Reset password buttons (`system-admin/users-375.png`).
    - Audit log: On, Details and IP address (`system-admin/audit-log-375.png`).
    - Nurses: everything after Gender, including five action buttons per row (`cno/nurses-375.png`). Rows are about 80 px
@@ -83,7 +84,8 @@ These are what showed up while capturing. They are observations, not decisions. 
 
 11. **The Nurses page is very long.** For the CNO, each of 68 nurses has five buttons stacked in three lines, giving 8,324
     px on desktop and 11,752 px at 375 (`cno/nurses-desktop.png`, `cno/nurses-375.png`). There is no search or paging,
-    only a unit filter.
+    only a unit filter. At 375 the content ends at about 8,370 px, but the document is 11,752 px tall, so the last
+    3,400 px are blank (`cno/nurses-375.png`).
 12. **Rule and catalogue forms are long single columns with help text under every field.** Unit rules runs to 6,893 px at
     375 (`unit-manager/unit-rules-375.png`) and Hospital rules to 5,282 px (`cno/hospital-rules-375.png`). Holidays and
     Ramadan repeats a First day / Days / Add form for each proposed holiday (`cno/holidays-desktop.png`).
