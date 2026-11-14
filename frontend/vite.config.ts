@@ -14,6 +14,8 @@ export default defineConfig({
       { find: /^zod$/, replacement: path.resolve(import.meta.dirname, "./src/lib/zod.ts") },
     ],
   },
+  // MEASUREMENT ONLY: a second page, measure.html, for timing the roster grid on real phones.
+  build: { rollupOptions: { input: { main: path.resolve(import.meta.dirname, "index.html"), measure: path.resolve(import.meta.dirname, "measure.html") } } },
   server: {
     // In development the browser talks to Vite, and Vite passes the API on to Django.
     proxy: { "/api": process.env.VITE_API_PROXY ?? "http://localhost:8000" },
