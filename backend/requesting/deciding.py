@@ -104,9 +104,11 @@ def refusal_to_pin(decision: Decision, holds: Holds, cells: MonthCells | None = 
         return None
     already = _holding_already(cells, hospital_id, day, holds) if reason.why == "held" else None
     if already is not None:
-        # An edit asking what a pin holds already changes nothing, so the edit the usual sentence names would not end it.
+        # An edit asking what a pin holds already changes nothing, so it would not end the pin. A clear gives the cell back to
+        # its solve, which on the roster in force is no change either when the solve held the same, so both ways are named.
         return (f"{holding(reason, decision.name)} holds this cell on {long_date(day)} with {what_of(already.shift)} already, "
-                "as the request asks. To make it the request's promise, clear the cell first, then decide the request.")
+                "as the request asks. To make it the request's promise, clear the cell or edit it to something else first, "
+                "then decide the request.")
     return manager_said(reason, decision.name, day, decision.month, REQUEST)
 
 
