@@ -275,7 +275,8 @@ def _skill_need(c: Ctx) -> list[Match]:
             if have < want:
                 out.append(Match(None, d, want - have,
                                  f"skill need: {c.p.day_words(d)} {k.shift} has {have} holding {k.skill}, needs {want} "
-                                 f"({want - have} short)", elapsed=d < c.F, shift=k.shift))
+                                 f"({want - have} short)", elapsed=d < c.F, shift=k.shift, skill=k.skill,
+                                 present=have, minimum=want))
     return out
 
 

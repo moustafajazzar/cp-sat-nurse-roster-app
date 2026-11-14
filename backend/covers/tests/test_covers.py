@@ -242,6 +242,18 @@ class TestASkillNeed:
         assert page["check"]["lack"] == [self.SHORT_OF_ICU]
         assert [(row["hospital_id"], row["makes_whole"]) for row in page["check"]["nurses"]] == [("Amal", True)]
 
+    def test_one_who_holds_the_skill_and_leaves_a_need_of_two_one_short_is_listed_unmarked(self, in_force, mona):
+        """A need broken less is not broken anew, so she is on the list; it is still short with her, so she does not make
+        the shift-day whole."""
+        night_needs(in_force, "ICU", least=2)
+        holding("Amal", "ICU", None, expires=False)
+
+        page = opened(mona, in_force, 9, "N")
+
+        assert page["check"]["lack"] == [
+            "Short of a skill it needs (the solver's check: skill need: 2026-06-09 N has 0 holding ICU, needs 2 (2 short))."]
+        assert [(row["hospital_id"], row["makes_whole"]) for row in page["check"]["nurses"]] == [("Amal", False)]
+
     def test_each_need_left_short_is_a_line_and_one_still_short_with_her_leaves_her_unmarked(self, in_force, mona):
         """Night needs a nurse holding Triage too, which Amal does not."""
         night_needs(in_force, "ICU", "Triage")

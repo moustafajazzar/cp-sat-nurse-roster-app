@@ -33,8 +33,9 @@ not repay is carried whole in `hours_balance`. `preferences_not_kept` counts thi
 asked off and works plus those she asked to work and is off, leave days left out: one month's
 memory, which doubles next month's price of her preferences when above 0.
 A violation states beside its words what a reader would otherwise parse out of them, each key only where the rule
-has the fact: `shift` on the rules of a shift-day (headcount, team leader, both genders, skill need), and `present`,
-`minimum` and `maximum` on a headcount.
+has the fact: `shift` on the rules of a shift-day (headcount, team leader, both genders, skill need); `present`,
+`minimum` and `maximum` on a headcount; and on a skill need its `skill`, `present` (the nurses on its shift holding the
+skill) and `minimum`.
 Without a roster (INFEASIBLE, UNKNOWN, MODEL_INVALID, or hard violations the validator
 found) `ok` is false; `roster`, `nurses` and `cost` are null when there is no roster at all.
 `ok` is true exactly when the CLI exits 0 (see `verdict`).

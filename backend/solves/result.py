@@ -1,7 +1,8 @@
 """Reading a stored result: the one place that says what its fields mean to this application.
 
-A violation states which shift of its day it is about and, for a headcount, its figures, as fields. The results and month closes
-stored before the solver stated them hold only its words, so the patterns that read those words are here and nowhere else."""
+A violation states which shift of its day it is about and, for a headcount and a skill need, its figures, as fields. The results
+and month closes stored before the solver stated them hold only its words, so the patterns that read those words are here and
+nowhere else."""
 from __future__ import annotations
 
 import datetime as dt
@@ -54,6 +55,15 @@ def headcount_of(violation: dict) -> tuple[int, int, int]:
         return violation["present"], violation["minimum"], violation["maximum"]
     present, low, high = (int(number) for number in _HEADCOUNT.search(violation["text"]).groups())
     return present, low, high
+
+
+def skill_need_of(violation: dict) -> tuple[str, int] | None:
+    """A skill need violation's skill and how many nurses holding it its shift-day is short, or None when it does not state
+    them, as one stored before the solver did. Its reader judges the solver's fresh answers only, so no pattern reads these
+    out of the words."""
+    if "skill" not in violation:
+        return None
+    return violation["skill"], violation["minimum"] - violation["present"]
 
 
 def explanation(solve_input: dict, result: dict | None) -> dict[str, dict] | None:

@@ -400,7 +400,7 @@ From the small request above (abridged):
 | `fingerprint` | Identifies the exact problem the roster was scored against. |
 | `precheck` | The same warnings the console printed. |
 | `roster` | Nurse → date → shift name, with `""` for off or on leave. It has the same shape as `published`, so it can be pasted into a re-plan. |
-| `violations` | Hard rules the roster breaks: `rule`, `nurse` (null for a unit-level rule), `date` (null for a monthly total) and `text`. A rule of a shift-day (headcount, team leader, both genders, skill need) also states its `shift`, and a headcount its `present`, `minimum` and `maximum`; no other rule has these keys. |
+| `violations` | Hard rules the roster breaks: `rule`, `nurse` (null for a unit-level rule), `date` (null for a monthly total) and `text`. A rule of a shift-day (headcount, team leader, both genders, skill need) also states its `shift`; a headcount its `present`, `minimum` and `maximum`; and a skill need its `skill`, and its `present` (the nurses on the shift holding it) and `minimum`. No other rule has these keys. |
 | `elapsed_violations` | Hard rules broken by recorded facts before the cutoff. They are reported, not treated as errors. |
 | `cost`, `penalties`, `department_cost` | The validated cost, its split per soft rule, and the part charged to the unit as a whole. |
 | `solver.stopped_by` | What ended the search: `proof`, `deterministic_budget`, `time_limit`, `cancelled` or `model_invalid`. |

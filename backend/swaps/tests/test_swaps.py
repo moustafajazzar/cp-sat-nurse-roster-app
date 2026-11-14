@@ -259,6 +259,29 @@ class TestASkillNeed:
         TestWhatTheProposerMayNotLearn.the_manager_reads_why(
             mona, in_force, "skill need: 2026-06-09 D has 0 holding ICU, needs 1 (1 short)", "D")
 
+    def test_a_swap_leaving_a_need_already_short_shorter_is_refused_naming_no_rule(self, in_force, nurse, mona):
+        """Day needs two nurses holding ICU and Badr is its only one on the 9th: the roster in force leaves it one short, and
+        the swap, moving him off, two."""
+        from rosters.tests.test_review import holding
+        holding("Badr", "ICU", None, expires=False)
+        rules_require(in_force, skill_needs=[{"shift": "D", "skill": "ICU", "weekday_min": 2, "weekend_min": 0}])
+
+        response = propose(nurse("Badr"), *SOUND_SWAP)
+
+        assert refusals(response) == ["This swap cannot work on 9 June 2026: that day's shifts would break the unit's rules."]
+        assert "ICU" not in response.content.decode() and "skill" not in response.content.decode()
+        TestWhatTheProposerMayNotLearn.the_manager_reads_why(
+            mona, in_force, "skill need: 2026-06-09 D has 0 holding ICU, needs 2 (2 short)", "D")
+
+    def test_a_swap_leaving_a_need_less_short_is_not_refused_for_it(self, in_force, nurse):
+        """Day needs two nurses holding ICU and has none on the 9th; Emad, who holds it, takes Badr's Day there. One short where
+        it was two is broken less, not anew."""
+        from rosters.tests.test_review import holding
+        holding("Emad", "ICU", None, expires=False)
+        rules_require(in_force, skill_needs=[{"shift": "D", "skill": "ICU", "weekday_min": 2, "weekend_min": 0}])
+
+        assert proposed(nurse("Badr"), *SOUND_SWAP)["state"] == "pending"
+
 
 FORBIDDEN = ["leave", "sick", "allowed", "gender", "team leader", "team_leader", "breastfeed", "ramadan", "score", "overtime",
              "hours", "request", "unavailable", "restriction", "outside", "dates", "transfer", "not on this", "cost", "deactiv",

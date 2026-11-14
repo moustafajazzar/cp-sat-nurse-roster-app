@@ -418,6 +418,7 @@ def test_a_grid_is_scored_with_the_two_rules_named_and_dated():
     need = next(r for r in answer["rules"] if r["id"] == "skill_need")
     assert need["level"] == SOFT and need["weight"] == 50 and need["raw"] == 30 and need["weighted"] == 30 * 50
     assert need["matches"][0] == {"nurse": None, "date": "2026-06-01", "amount": 1, "elapsed": False, "shift": "N",
+                                  "skill": "ICU", "present": 0, "minimum": 1,
                                   "text": "skill need: 2026-06-01 N has 0 holding ICU, needs 1 (1 short)"}
     # June 2026 from a Monday, four Fridays: 26 working days at 7 h (breastfeeding) = 182 h owed, one 12 h shift worked
     assert nurses_of(req, roster)["Dana"]["carry_over"]["hours_balance"] == 182 - 12

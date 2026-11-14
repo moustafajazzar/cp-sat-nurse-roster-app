@@ -5,8 +5,9 @@ nurses off that day (on the grid, in the month, within their dates, not on leave
 accepted request, and whose taking it newly breaks no hard rule, judged as a swap is: the grid with her cell set to the shift,
 put in as a pin, checked with the solver's own code in this process against the month as it stands. A hard rule the roster in
 force already breaks is not hers, so a shift-day already short does not empty its own list: a headcount broken less, as one
-more nurse on a short shift-day breaks it, is not broken anew. A manager's pin or a swap's to a day off is noted as replaced;
-a cell in a waiting swap is left in, since any version expires that swap.
+more nurse on a short shift-day breaks it, is not broken anew, nor is a skill need left less short by one more nurse holding its
+skill. A manager's pin or a swap's to a day off is noted as replaced; a cell in a waiting swap is left in, since any version
+expires that swap.
 
 What the shift-day lacks is each hard rule about a shift-day as a whole that the roster in force breaks there: its headcount, a
 team leader, both genders, and a skill need left short, with a line for each skill. A nurse makes it whole when her taking it

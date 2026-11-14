@@ -13,7 +13,7 @@ from rosters.drafts import current_code
 from rosters.models import PinnedCell, Roster
 from rosters.pins import Judge
 from rosters.versions import Grid
-from solves.result import headcount_of, shift_day
+from solves.result import headcount_of, shift_day, skill_need_of
 
 
 @dataclass(frozen=True)
@@ -75,6 +75,16 @@ def _beyond(violation: dict) -> int:
     return low - present if present < low else present - high
 
 
+def _short(violation: dict) -> tuple[tuple, int] | None:
+    """A skill need's shift-day and skill, which name it (a shift-day can need several skills), and how many nurses holding
+    the skill it is short; None for another rule, or a need that does not state its figures."""
+    where, need = shift_day(violation), skill_need_of(violation)
+    if violation["rule"] != "skill_need" or where is None or need is None:
+        return None
+    skill, short = need
+    return (where, skill), short
+
+
 def _as_broken(violation: dict) -> tuple:
     """A violation with how far it breaks its rule, which only its words say: one broken further reads differently."""
     where = shift_day(violation)
@@ -84,15 +94,21 @@ def _as_broken(violation: dict) -> tuple:
 def newly_broken(before: list[dict], after: list[dict]) -> list[dict]:
     """The violations of `after` that `before` does not hold, or holds broken less: what a change to the roster in force
     breaks, between that roster's violations and the changed grid's. A hard rule the roster in force already breaks is not the
-    change's, since an edit may save one. A headcount is compared by how far it is outside its range, as its words change when
-    it comes nearer: one more nurse on a short shift-day breaks it less, not anew."""
+    change's, since an edit may save one. A headcount is compared by how far it is outside its range, and a skill need by how
+    many nurses holding its skill it is short, as their words change when they come nearer: one more nurse on a short
+    shift-day breaks it less, not anew. Any other rule, or a skill need that does not state its figures, is compared by its
+    words."""
     already = {_as_broken(violation) for violation in before}
     headcounts = {shift_day(row): _beyond(row) for row in before if row["rule"] == "headcount" and shift_day(row)}
+    needs = dict(short for row in before if (short := _short(row)))
     new = []
     for violation in after:
-        where = shift_day(violation)
+        where, short = shift_day(violation), _short(violation)
         if violation["rule"] == "headcount" and where in headcounts:
             if _beyond(violation) > headcounts[where]:
+                new.append(violation)
+        elif short is not None and short[0] in needs:
+            if short[1] > needs[short[0]]:
                 new.append(violation)
         elif _as_broken(violation) not in already:
             new.append(violation)

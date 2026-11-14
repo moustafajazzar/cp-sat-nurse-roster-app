@@ -290,10 +290,18 @@ slow convergence the most. The four-nurse sample is solved to proven optimality 
   a headcount's figures, and had only the sentence to take them from, so rewording a sentence could break a reader
   without failing a test. A match now carries them as flat optional fields (`rules.Match`): `shift` on the four rules
   of a shift-day (headcount, team leader, both genders, skill need), and `present`, `minimum` and `maximum` on a
-  headcount. They are the facts a reader uses today and no more; every other rule keeps rule, nurse, date and text.
-  `result.stated` is the one rendering of a match as it leaves the solver, shared by a result's violations and by a
-  no-search check of a grid (its violations and the matches of its explanation), which leaves a key out where the rule
-  has no such fact. The keys are additive, so the result stays version 1.
+  headcount. They were the facts a reader used then and no more (a skill need has since gained its own, in the entry
+  below); every other rule keeps rule, nurse, date and text. `result.stated` is the one rendering of a match as it
+  leaves the solver, shared by a result's violations and by a no-search check of a grid (its violations and the
+  matches of its explanation), which leaves a key out where the rule has no such fact. The keys are additive, so the
+  result stays version 1.
+* **2026-11-14: a skill need states its skill and its figures.** A reader judging a change to a roster compares how far
+  each rule is broken before and after, and a skill need's words carry its counts ("has 1 holding ICU, needs 2 (1
+  short)"), so a need narrowed by one more nurse holding the skill read as a different sentence, and so as broken anew.
+  Its match now states `skill` (the need's skill, since several needs can sit on one shift-day), `present` (the nurses
+  on exactly its shift holding the skill that day) and `minimum` (the least it needs that day), beside `shift`; it has
+  no `maximum`, since a need has no upper bound. The sentence is unchanged, `present` and `minimum` mean for a need
+  what its words already said, and no other rule gains a fact. The keys are additive, so the result stays version 1.
 * **2026-11-14: every text leaving the solver names dates.** The validator's and the precheck's sentences counted the
   month's days from 0 ("day 8" is the 9th), and every reader had to translate them, on each page that showed one. A
   sentence is now written dated (`Problem.day_words`), with the date standing where "day N" stood and the rest of its

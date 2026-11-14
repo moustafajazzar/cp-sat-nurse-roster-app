@@ -15,7 +15,7 @@ from tests.test_core import mini
 from tests.test_request import published_of
 
 SKILLS = Path(__file__).parent.parent / "service_tests" / "fixtures" / "four_nurses_skills.json"
-FACTS = {"shift", "present", "minimum", "maximum"}
+FACTS = {"shift", "skill", "present", "minimum", "maximum"}
 
 
 def every_shift_day_rule() -> dict:
@@ -51,10 +51,22 @@ def test_a_grid_checks_headcount_violation_states_its_shift_and_its_figures():
     assert (over["present"], over["minimum"], over["maximum"]) == (3, 1, 2)
 
 
-def test_the_other_shift_day_rules_state_their_shift_and_no_figures():
+def test_a_grid_checks_skill_need_violation_states_its_shift_its_skill_and_its_figures():
+    """Night comes to need two nurses holding ICU, and Amal, who holds it, works it alone."""
+    raw = every_shift_day_rule()
+    raw["department"]["skill_needs"] = [{"shift": "N", "skill": "ICU", "weekday_min": 2, "weekend_min": 2}]
+    answer = checked(raw, {("Amal", "2026-06-09"): "N"})
+
+    need = on(answer["violations"], "skill_need", "2026-06-09", "N")
+
+    assert need == {"rule": "skill_need", "nurse": None, "date": "2026-06-09", "text": need["text"],
+                    "shift": "N", "skill": "ICU", "present": 1, "minimum": 2}
+
+
+def test_team_leader_and_gender_state_their_shift_and_no_figures():
     answer = checked(every_shift_day_rule(), {})
 
-    for rule in ("team_leader", "gender", "skill_need"):
+    for rule in ("team_leader", "gender"):
         violation = on(answer["violations"], rule, "2026-06-09", "N")
         assert set(violation) == {"rule", "nurse", "date", "text", "shift"}
 
@@ -79,7 +91,8 @@ def test_a_match_in_a_rules_explanation_states_the_same_facts():
 
     assert headcount == {"nurse": None, "date": "2026-06-09", "amount": 1, "elapsed": False, "text": headcount["text"],
                          "shift": "D", "present": 0, "minimum": 1, "maximum": 1}
-    assert need["shift"] == "N" and not FACTS - {"shift"} & set(need)
+    assert need == {"nurse": None, "date": "2026-06-09", "amount": 1, "elapsed": False, "text": need["text"],
+                    "shift": "N", "skill": "ICU", "present": 0, "minimum": 1}
     assert not FACTS & set(hours_short)
 
 
