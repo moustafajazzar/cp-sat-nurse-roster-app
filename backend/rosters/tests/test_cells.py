@@ -1,0 +1,619 @@
+"""Whether a cell of a unit's month can hold a change, asked of `rosters.cells` alone: each test builds the month in the
+database, asks and reads the answer. The month is June 2026 of the four-nurse sample as ER, which works Day (D) and Night (N), its
+night shift; Amal may work either and Emad only Day. No test here has a roster unless it says so: a pin, and so the question,
+exists without one."""
+import datetime as dt
+from typing import get_args
+
+import pytest
+
+from accounts.models import User
+from hospital.models import LeaveType, Shift, ShiftRename
+from nurses.models import Leave, NurseProfile, Placement
+from nurses.tests.conftest import make_unit
+from rosters.cells import (COVER, EDIT, HIDDEN, PRIVATE, REQUEST, SHOWN, SWAP, Answer, MonthCells, NewCell, Reason,
+                           Why, newly_broken, reader_of)
+from rosters.models import PinEnded, PinnedCell, PinOrigin, Roster, RosterState
+from rosters.pins import end
+from rosters.tests.conftest import approved_roster
+from rosters.tests.test_review import holding
+from solves.tests.conftest import nurse_in
+from solves.tests.probation_scene import add_faten
+
+pytestmark = pytest.mark.django_db
+
+JUNE = dt.date(2026, 6, 1)
+
+
+@pytest.fixture(autouse=True)
+def _scene(before_june):
+    pass
+
+
+def day(number: int) -> dt.date:
+    return JUNE.replace(day=number)
+
+
+def profile(hospital_id: str) -> NurseProfile:
+    return NurseProfile.objects.get(user__username=hospital_id)
+
+
+def manager() -> User:
+    return User.objects.get(username="mona")
+
+
+def test_a_cell_nothing_stands_on_may_hold_a_shift_or_a_day_off(er):
+    cells = MonthCells(er, JUNE)
+
+    assert cells.may_hold("Amal", day(3), EDIT, "N") == Answer()
+    assert cells.may_hold("Amal", day(3), EDIT, None) == Answer()
+
+
+@pytest.mark.parametrize("state", [None, RosterState.DRAFT, RosterState.APPROVED])
+def test_the_answers_are_the_same_with_no_roster_a_draft_and_a_roster_in_force(er, state):
+    if state is not None:
+        approved_roster(er)
+        Roster.objects.update(state=state)
+    pinned(er, "Amal", 3, "N", PinOrigin.REQUEST)
+
+    cells = MonthCells(er, JUNE)
+
+    assert cells.may_hold("Amal", day(3), EDIT, "D") == Answer(reason=Reason("held", origin="request"))
+    assert cells.may_hold("Emad", day(4), SWAP, "N") == Answer(reason=Reason("shift_not_allowed", shift="N"))
+    assert cells.may_hold("Badr", day(4), COVER, "N") == Answer()
+
+
+class TestEachReason:
+    """One for each reason a cell cannot hold what is asked, with its facts."""
+
+    def test_a_nurse_not_in_the_month(self, er, make_user):
+        nurse_in(make_unit("ICU"), make_user, "Faris")
+
+        cells = MonthCells(er, JUNE)
+
+        assert cells.cannot_hold("Faris", day(3), "N") == Reason("not_in_month")
+        assert cells.cannot_hold("Nobody", day(3), None) == Reason("not_in_month")
+
+    def test_a_date_outside_her_dates(self, er):
+        NurseProfile.objects.filter(user__username="Amal").update(end_date=day(20))
+
+        cells = MonthCells(er, JUNE)
+
+        assert cells.cannot_hold("Amal", day(21), None) == Reason("outside_dates")
+        assert cells.cannot_hold("Amal", day(20), None) is None
+
+    def test_a_day_of_leave(self, er):
+        Leave.objects.create(nurse=profile("Amal"), date=day(3), leave_type=LeaveType.objects.first(), recorded_by=manager())
+
+        cells = MonthCells(er, JUNE)
+
+        assert cells.cannot_hold("Amal", day(3), None) == Reason("leave")
+        assert cells.cannot_hold("Amal", day(3), "N") == Reason("leave")
+        assert cells.cannot_hold("Amal", day(4), None) is None
+
+    def test_a_shift_the_unit_does_not_work_named_as_it_was_asked(self, er):
+        cells = MonthCells(er, JUNE)
+
+        assert cells.cannot_hold("Amal", day(3), "A") == Reason("shift_not_worked", shift="A")
+        assert cells.cannot_hold("Amal", day(3), "Zz") == Reason("shift_not_worked", shift="Zz")
+
+    def test_a_shift_the_hospital_has_retired(self, er):
+        Shift.objects.filter(code="N").update(active=False)
+
+        assert MonthCells(er, JUNE).cannot_hold("Amal", day(3), "N") == Reason("shift_not_worked", shift="N")
+
+    def test_a_shift_asked_by_a_code_it_once_held_is_the_shift_it_is_now(self, er):
+        ShiftRename.objects.create(shift=Shift.objects.get(code="N"), old_code="NT", new_code="N", by=manager())
+
+        cells = MonthCells(er, JUNE)
+
+        assert cells.cannot_hold("Amal", day(3), "NT") is None
+        assert cells.cannot_hold("Emad", day(3), "NT") == Reason("shift_not_allowed", shift="N")
+
+    def test_a_shift_asked_as_the_row_a_cover_or_a_request_holds_is_judged_as_its_code_is(self, er):
+        cells = MonthCells(er, JUNE)
+
+        assert cells.cannot_hold("Amal", day(3), Shift.objects.get(code="N")) is None
+        assert cells.cannot_hold("Emad", day(3), Shift.objects.get(code="N")) == Reason("shift_not_allowed", shift="N")
+        assert cells.cannot_hold("Amal", day(3), Shift.objects.get(code="A")) == Reason("shift_not_worked", shift="A")
+
+    def test_a_bar_with_its_skill_and_its_last_counted_day(self, er):
+        holding("Amal", "BLS", day(15), required=True)
+
+        cells = MonthCells(er, JUNE)
+
+        assert cells.cannot_hold("Amal", day(16), "N") == Reason("barred", skill="BLS", last=day(15))
+        assert cells.cannot_hold("Amal", day(15), "N") is None
+
+    def test_a_day_off_is_still_hers_on_a_barred_day(self, er):
+        holding("Amal", "BLS", day(15), required=True)
+
+        assert MonthCells(er, JUNE).cannot_hold("Amal", day(16), None) is None
+
+    def test_a_shift_that_is_not_one_of_her_allowed_shifts(self, er):
+        cells = MonthCells(er, JUNE)
+
+        assert cells.cannot_hold("Emad", day(3), "N") == Reason("shift_not_allowed", shift="N")
+        assert cells.cannot_hold("Emad", day(3), "D") is None
+
+    def test_the_night_shift_on_probation(self, er, make_user):
+        add_faten(er, make_user)
+
+        cells = MonthCells(er, JUNE)
+
+        assert cells.cannot_hold("Faten", day(3), "N") == Reason("night_on_probation", shift="N")
+        assert cells.cannot_hold("Faten", day(3), "D") is None
+        assert cells.on_probation == {"Faten"}
+
+
+    def test_a_pin_that_does_not_yield_with_its_origin(self, er):
+        pinned(er, "Amal", 3, "N", PinOrigin.REQUEST)
+
+        assert MonthCells(er, JUNE).may_hold("Amal", day(3), EDIT, "D") == Answer(reason=Reason("held", origin="request"))
+
+
+def pinned(unit, hospital_id: str, number: int, code: str, origin: PinOrigin) -> PinnedCell:
+    """A pin as its origin would have made it, written straight to the database."""
+    shift = Shift.objects.get(code=code) if code else None
+    return PinnedCell.objects.create(unit=unit, nurse=profile(hospital_id), date=day(number), shift=shift, origin=origin,
+                                     pinned_by=manager())
+
+
+REPLACES, REFUSED = "replaces", "refused"
+# Which pin yields to which change as the app stands: {the origin asking: {the pin's origin: what becomes of the pin}}.
+YIELDS = {
+    EDIT: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REFUSED, PinOrigin.SWAP: REPLACES, PinOrigin.COVER: REPLACES},
+    SWAP: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REFUSED, PinOrigin.SWAP: REPLACES, PinOrigin.COVER: REPLACES},
+    # A cover never meets a cover's pin, which put its nurse on a shift where a cover goes only to one off. Being off is the
+    # cover's own rule, not the judgement's, so the judgement still answers it, as for a swap.
+    COVER: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REFUSED, PinOrigin.SWAP: REPLACES, PinOrigin.COVER: REPLACES},
+    REQUEST: {PinOrigin.MANAGER: REPLACES, PinOrigin.REQUEST: REPLACES, PinOrigin.SWAP: REFUSED, PinOrigin.COVER: REFUSED},
+}
+PAIRINGS = [(asking, origin, outcome) for asking, row in YIELDS.items() for origin, outcome in row.items()]
+
+
+class TestWhichPinYields:
+    @pytest.mark.parametrize("asking, origin, outcome", PAIRINGS)
+    def test_each_pairing_of_the_origin_asking_and_the_pin_held(self, er, asking, origin, outcome):
+        pin = pinned(er, "Amal", 3, "N", origin)
+        expected = Answer(replaces=pin) if outcome == REPLACES else Answer(reason=Reason("held", origin=origin))
+
+        cells = MonthCells(er, JUNE)
+
+        assert cells.may_hold("Amal", day(3), asking, "D") == expected
+        assert cells.may_hold("Amal", day(3), asking, None) == expected
+        assert cells.may_change("Amal", day(3), asking) == expected
+
+    @pytest.mark.parametrize("asking, origin, outcome", PAIRINGS)
+    def test_a_pin_set_aside_still_holds_its_cell_in_each_pairing(self, er, asking, origin, outcome):
+        """Set aside by its own shift, which she may no longer work, so the cell can still hold a Day or a day off."""
+        pin = pinned(er, "Amal", 3, "N", origin)
+        Placement.objects.filter(nurse=profile("Amal")).update(allowed_shifts=["D"])
+        expected = Answer(replaces=pin) if outcome == REPLACES else Answer(reason=Reason("held", origin=origin))
+
+        cells = MonthCells(er, JUNE)
+
+        assert cells.set_aside(pin) == Reason("shift_not_allowed", shift="N")
+        assert cells.may_hold("Amal", day(3), asking, "D") == expected
+        assert cells.may_hold("Amal", day(3), asking, None) == expected
+        assert cells.may_change("Amal", day(3), asking) == expected
+
+    def test_a_pin_replaced_is_named_with_its_origin_and_what_it_holds(self, er):
+        pinned(er, "Amal", 3, "N", PinOrigin.MANAGER)
+
+        replaced = MonthCells(er, JUNE).may_hold("Amal", day(3), SWAP, None).replaces
+
+        assert (replaced.origin, replaced.code) == ("manager", "N")
+
+    @pytest.mark.parametrize("asking", [EDIT, SWAP, COVER, REQUEST])
+    def test_the_managers_own_pin_replaced_is_named_by_what_it_holds(self, er, asking):
+        pinned(er, "Amal", 3, "N", PinOrigin.MANAGER)
+        pinned(er, "Amal", 4, None, PinOrigin.MANAGER)
+
+        cells = MonthCells(er, JUNE)
+
+        assert (cells.managers_pin_replaced("Amal", day(3), asking), cells.managers_pin_replaced("Amal", day(4), asking)) == (
+            "N", "")
+
+    @pytest.mark.parametrize("origin", [PinOrigin.REQUEST, PinOrigin.SWAP, PinOrigin.COVER])
+    def test_no_managers_pin_is_named_where_another_origins_pin_is_or_none(self, er, origin):
+        """Replaced or holding its cell, another origin's pin is not the manager's to be told of."""
+        pinned(er, "Amal", 3, "N", origin)
+
+        cells = MonthCells(er, JUNE)
+
+        assert [cells.managers_pin_replaced("Amal", day(3), asking) for asking in (EDIT, SWAP, COVER, REQUEST)] == [None] * 4
+        assert cells.managers_pin_replaced("Amal", day(5), EDIT) is None
+
+    def test_the_pin_on_a_cell_is_found_whatever_its_origin_and_set_aside_too(self, er):
+        on_the_3rd = pinned(er, "Amal", 3, "N", PinOrigin.COVER)
+        Placement.objects.filter(nurse=profile("Amal")).update(allowed_shifts=["D"])
+
+        cells = MonthCells(er, JUNE)
+
+        assert cells.set_aside(on_the_3rd) == Reason("shift_not_allowed", shift="N")
+        assert (cells.pin_on("Amal", day(3)), cells.pin_on("Amal", day(4)), cells.pin_on("Emad", day(3))) == (
+            on_the_3rd, None, None)
+
+    def test_a_pin_holding_just_what_is_asked_already_is_found_by_any_code_of_its_shift(self, er):
+        night = pinned(er, "Amal", 3, "N", PinOrigin.SWAP)
+        off = pinned(er, "Amal", 4, None, PinOrigin.COVER)
+        ShiftRename.objects.create(shift=Shift.objects.get(code="N"), old_code="NT", new_code="N", by=manager())
+
+        cells = MonthCells(er, JUNE)
+
+        assert [cells.holding_already("Amal", day(3), asked) for asked in ("N", "NT", Shift.objects.get(code="N"))] == [
+            night] * 3
+        assert (cells.holding_already("Amal", day(3), "D"), cells.holding_already("Amal", day(3), None)) == (None, None)
+        assert (cells.holding_already("Amal", day(4), None), cells.holding_already("Amal", day(4), "D")) == (off, None)
+        assert cells.holding_already("Amal", day(5), None) is None
+
+    def test_a_cell_with_no_pin_may_change(self, er):
+        assert MonthCells(er, JUNE).may_change("Amal", day(3), EDIT) == Answer()
+
+    def test_a_pin_ended_or_on_another_day_holds_nothing(self, er):
+        pinned(er, "Amal", 4, "N", PinOrigin.REQUEST)
+        ended = pinned(er, "Amal", 3, "N", PinOrigin.REQUEST)
+        end([ended], PinEnded.CLEARED, manager())
+
+        assert MonthCells(er, JUNE).may_hold("Amal", day(3), EDIT, "D") == Answer()
+
+    def test_whether_the_change_may_be_made_at_all_asks_nothing_of_the_day_or_the_shift(self, er):
+        """All a clear is asked: ending a pin can break nothing."""
+        NurseProfile.objects.filter(user__username="Amal").update(end_date=day(2))
+        pin = pinned(er, "Amal", 3, "N", PinOrigin.MANAGER)
+
+        cells = MonthCells(er, JUNE)
+
+        assert cells.may_change("Amal", day(3), EDIT) == Answer(replaces=pin)
+        assert cells.may_hold("Amal", day(3), EDIT, "D") == Answer(reason=Reason("outside_dates"))
+
+
+def left_for_another_unit(er, make_user) -> None:
+    Placement.objects.create(nurse=profile("Amal"), unit=make_unit("ICU"), from_month=JUNE)
+
+
+def ends_before_the_day(er, make_user) -> None:
+    NurseProfile.objects.filter(user__username="Amal").update(end_date=day(10))
+
+
+def on_leave_that_day(er, make_user) -> None:
+    Leave.objects.create(nurse=profile("Amal"), date=day(20), leave_type=LeaveType.objects.first(), recorded_by=manager())
+
+
+def unit_stops_working_night(er, make_user) -> None:
+    er.rules["shifts"] = ["D"]
+    er.save()
+
+
+def barred_from_the_16th(er, make_user) -> None:
+    holding("Amal", "BLS", day(15), required=True)
+
+
+def allowed_only_day(er, make_user) -> None:
+    Placement.objects.filter(nurse=profile("Amal")).update(allowed_shifts=["D"])
+
+
+def put_on_probation(er, make_user) -> None:
+    NurseProfile.objects.filter(user__username="Amal").update(on_probation=True, start_date=dt.date(2026, 4, 1))
+
+
+# What comes to be so after Amal was pinned to Night on 20 June, and why that pin then counts for nothing.
+ABOUT_THE_DAY = [(left_for_another_unit, Reason("not_in_month")), (ends_before_the_day, Reason("outside_dates")),
+                 (on_leave_that_day, Reason("leave"))]
+ABOUT_THE_SHIFT = [(unit_stops_working_night, Reason("shift_not_worked", shift="N")),
+                   (barred_from_the_16th, Reason("barred", skill="BLS", last=dt.date(2026, 6, 15))),
+                   (allowed_only_day, Reason("shift_not_allowed", shift="N")),
+                   (put_on_probation, Reason("night_on_probation", shift="N"))]
+
+
+class TestSetAside:
+    def test_a_pin_its_cell_could_hold_now_counts(self, er):
+        pin = pinned(er, "Amal", 20, "N", PinOrigin.MANAGER)
+
+        assert MonthCells(er, JUNE).set_aside(pin) is None
+
+    def test_the_months_pins_are_listed_by_nurse_and_date_without_those_ended_or_another_units(self, er, make_user):
+        first, second = pinned(er, "Badr", 4, "N", PinOrigin.SWAP), pinned(er, "Amal", 20, "", PinOrigin.MANAGER)
+        third = pinned(er, "Amal", 3, "N", PinOrigin.REQUEST)
+        end([pinned(er, "Dana", 3, "N", PinOrigin.MANAGER)], PinEnded.CLEARED, manager())
+        icu = make_unit("ICU")
+        pinned(icu, nurse_in(icu, make_user, "Faris").user.username, 3, "", PinOrigin.MANAGER)
+
+        assert MonthCells(er, JUNE).pins == [third, second, first]
+
+    @pytest.mark.parametrize("comes_to_be, reason", ABOUT_THE_DAY + ABOUT_THE_SHIFT)
+    def test_a_saved_pin_is_set_aside_for_the_reason_a_new_pin_on_its_cell_would_be_refused(self, er, make_user, comes_to_be,
+                                                                                         reason):
+        pin = pinned(er, "Amal", 20, "N", PinOrigin.MANAGER)
+        comes_to_be(er, make_user)
+
+        cells = MonthCells(er, JUNE)
+
+        assert cells.set_aside(pin) == reason
+        assert cells.cannot_hold("Amal", day(20), "N") == reason
+
+    def test_a_pin_of_any_origin_is_set_aside_alike_whatever_holds_its_cell(self, er):
+        pin = pinned(er, "Amal", 20, "N", PinOrigin.REQUEST)
+        allowed_only_day(er, None)
+
+        assert MonthCells(er, JUNE).set_aside(pin) == Reason("shift_not_allowed", shift="N")
+
+    def test_a_pin_to_a_day_off_counts_on_a_barred_day(self, er):
+        pin = pinned(er, "Amal", 20, "", PinOrigin.MANAGER)
+        barred_from_the_16th(er, None)
+
+        assert MonthCells(er, JUNE).set_aside(pin) is None
+
+    @pytest.mark.parametrize("comes_to_be, reason", ABOUT_THE_DAY)
+    def test_in_a_month_that_is_over_a_reason_about_the_day_still_sets_it_aside(self, er, make_user, comes_to_be, reason):
+        pin = pinned(er, "Amal", 20, "N", PinOrigin.MANAGER)
+        comes_to_be(er, make_user)
+
+        assert MonthCells(er, JUNE).set_aside(pin, over=True) == reason
+
+    @pytest.mark.parametrize("comes_to_be, reason", ABOUT_THE_SHIFT)
+    def test_in_a_month_that_is_over_a_pin_to_a_shift_she_could_not_work_now_still_counts(self, er, make_user, comes_to_be,
+                                                                                       reason):
+        """Its shift was worked when it was set, and the month's close makes that fact."""
+        pin = pinned(er, "Amal", 20, "N", PinOrigin.MANAGER)
+        comes_to_be(er, make_user)
+
+        assert MonthCells(er, JUNE).set_aside(pin, over=True) is None
+
+
+class TestTheirOrder:
+    """The day's reasons come before the shift's, and of the shift's the one that would stop any nurse comes first."""
+
+    def test_the_day_is_said_before_the_shift(self, er):
+        NurseProfile.objects.filter(user__username="Emad").update(end_date=day(20))
+
+        assert MonthCells(er, JUNE).cannot_hold("Emad", day(21), "A") == Reason("outside_dates")
+
+    def test_a_shift_not_worked_is_said_before_her_bar_and_her_bar_before_her_allowed_shifts(self, er):
+        holding("Emad", "BLS", day(15), required=True)
+
+        cells = MonthCells(er, JUNE)
+
+        assert cells.cannot_hold("Emad", day(16), "A") == Reason("shift_not_worked", shift="A")
+        assert cells.cannot_hold("Emad", day(16), "N") == Reason("barred", skill="BLS", last=day(15))
+
+    def test_a_pin_that_does_not_yield_is_said_last(self, er):
+        pinned(er, "Emad", 3, "D", PinOrigin.REQUEST)
+
+        cells = MonthCells(er, JUNE)
+
+        assert cells.may_hold("Emad", day(3), SWAP, "N") == Answer(reason=Reason("shift_not_allowed", shift="N"))
+        assert cells.may_hold("Emad", day(3), SWAP, None) == Answer(reason=Reason("held", origin="request"))
+
+
+# Each reason's reader class: private to the nurse and her manager (her dates, her leave, her bar, her allowed shifts, the pin
+# on her cell), or shown as it is because My roster shows it (the unit's shifts, who is on probation).
+READERS = {"not_in_month": PRIVATE, "outside_dates": PRIVATE, "leave": PRIVATE, "shift_not_worked": SHOWN, "barred": PRIVATE,
+           "shift_not_allowed": PRIVATE, "night_on_probation": SHOWN, "held": PRIVATE}
+
+
+class TestWhoReadsEachReason:
+    """The unit's manager reads every reason in full whatever its class; the class says what a nurse may read."""
+
+    @pytest.mark.parametrize("why, reader", READERS.items())
+    def test_each_reason_states_its_reader_class(self, why, reader):
+        assert Reason(why).reader == reader
+
+    @pytest.mark.parametrize("origin", list(PinOrigin))
+    def test_a_pin_that_does_not_yield_is_private_whatever_its_origin(self, origin):
+        assert Reason("held", origin=origin).reader == PRIVATE
+
+    def test_a_new_reason_is_classed_here_before_it_can_be_given(self):
+        assert set(READERS) == set(get_args(Why))
+
+
+class TestWhatAnyoneMaySee:
+    """A shown reason is answered on its own, so that a private reason ahead of it in the one order cannot hide it: a reader
+    told only the shown one learns nothing of the private one."""
+
+    def test_a_shift_the_unit_does_not_work_is_shown_whatever_stands_before_it(self, er, make_user):
+        Leave.objects.create(nurse=profile("Amal"), date=day(3), leave_type=LeaveType.objects.first(), recorded_by=manager())
+        NurseProfile.objects.filter(user__username="Emad").update(end_date=day(20))
+        nurse_in(make_unit("ICU"), make_user, "Faris")
+
+        cells = MonthCells(er, JUNE)
+
+        assert cells.cannot_hold("Amal", day(3), "A") == Reason("leave")
+        assert cells.shown("Amal", day(3), "A") == Reason("shift_not_worked", shift="A")
+        assert cells.shown("Emad", day(21), "A") == Reason("shift_not_worked", shift="A")
+        assert cells.shown("Faris", day(3), "A") == Reason("shift_not_worked", shift="A")
+
+    def test_the_night_shift_on_probation_is_shown_whatever_stands_before_it(self, er, make_user):
+        add_faten(er, make_user)
+        holding("Faten", "BLS", day(15), required=True)
+
+        cells = MonthCells(er, JUNE)
+
+        assert cells.cannot_hold("Faten", day(16), "N") == Reason("barred", skill="BLS", last=day(15))
+        assert cells.shown("Faten", day(16), "N") == Reason("night_on_probation", shift="N")
+
+    def test_a_cell_with_only_private_reasons_or_none_shows_nothing(self, er):
+        Leave.objects.create(nurse=profile("Amal"), date=day(3), leave_type=LeaveType.objects.first(), recorded_by=manager())
+        NurseProfile.objects.filter(user__username="Emad").update(end_date=day(20))
+
+        cells = MonthCells(er, JUNE)
+
+        assert cells.shown("Amal", day(3), "N") is None
+        assert cells.shown("Emad", day(3), "N") is None
+        assert cells.shown("Emad", day(21), "N") is None
+        assert cells.shown("Nobody", day(3), "N") is None
+        assert cells.shown("Amal", day(4), None) is None
+        assert cells.shown("Amal", day(4), "N") is None
+
+
+class TestWhoReadsANewlyBrokenViolation:
+    """A violation a change newly breaks is classed as a reason is: the nurse's own is private to her, a headcount anyone can
+    count is shown, and one on who holds which attribute on a shift-day is hidden from every nurse."""
+
+    def test_a_violation_on_a_nurse_is_private_to_her(self):
+        assert reader_of(OVERTIME) == PRIVATE
+        assert reader_of({"rule": "following", "nurse": "Faten", "date": "2026-06-05", "text": "following: ..."}) == PRIVATE
+
+    def test_a_headcount_is_shown(self):
+        assert reader_of(headcount(1)) == SHOWN
+
+    @pytest.mark.parametrize("violation", [
+        {"rule": "team_leader", "nurse": None, "date": "2026-06-09", "text": "team leader: 2026-06-09 D has none", "shift": "D"},
+        {"rule": "gender", "nurse": None, "date": "2026-06-09", "text": "gender: 2026-06-09 N only F", "shift": "N"},
+        {"rule": "skill_need", "nurse": None, "date": "2026-06-09", "text": "skill need: ...", "shift": "N"},
+        {"rule": "a_rule_not_yet_known", "nurse": None, "date": None, "text": "something new"},
+    ], ids=["team_leader", "gender", "skill_need", "unknown"])
+    def test_any_other_violation_with_no_nurse_is_hidden(self, violation):
+        assert reader_of(violation) == HIDDEN
+
+
+def short_of_day_nurses(unit) -> None:
+    """Day takes three nurses every day, so the roster in force, with one or two on it, is already short on each."""
+    unit.rules["headcounts"][0].update(weekday_min=3, weekday_max=3, weekend_min=3, weekend_max=3)
+    unit.save()
+
+
+class TestWhatAChangeNewlyBreaks:
+    """Asked of a grid, here the roster in force of June, on which Badr alone works Day on the 9th and Dana Night."""
+
+    def test_a_new_cell_breaking_a_rule_returns_its_violation(self, er):
+        roster = approved_roster(er)
+        short_of_day_nurses(er)
+
+        broken = MonthCells(er, JUNE).breaks(roster.grid, [NewCell("Badr", day(9), "N")])
+
+        assert sorted(row["text"] for row in broken.violations) == [
+            "headcount: 2026-06-09 D = 0, want 3..3",
+            "night rest: Badr D 2026-06-11 has only 1 day(s) off since N 2026-06-09, needs 2"]
+
+    def test_a_rule_the_roster_already_breaks_is_not_returned(self, er):
+        roster = approved_roster(er)
+        short_of_day_nurses(er)
+
+        broken = MonthCells(er, JUNE).breaks(roster.grid, [NewCell("Emad", day(9), "D")])
+
+        assert "headcount: 2026-06-09 D = 1, want 3..3" in [row["text"] for row in broken.before.violations]
+        assert broken.violations == []
+        assert broken.grid["Emad"]["2026-06-09"] == "D" and roster.grid["Emad"]["2026-06-09"] == ""
+
+    def test_a_pin_the_new_cell_replaces_does_not_count_against_it(self, er):
+        roster = approved_roster(er)
+        pinned(er, "Badr", 9, "D", PinOrigin.MANAGER)
+
+        broken = MonthCells(er, JUNE).breaks(roster.grid, [NewCell("Badr", day(9), None), NewCell("Emad", day(9), "D")])
+
+        assert broken.violations == []
+
+    def test_a_grid_the_solvers_code_refuses_is_an_answer_not_an_error(self, er):
+        roster = approved_roster(er)
+        er.rules["night_shift"] = "ZZ"
+        er.save()
+
+        broken = MonthCells(er, JUNE).breaks(roster.grid, [NewCell("Emad", day(9), "D")])
+
+        assert broken.after.reason and broken.violations == []
+
+    def test_asking_of_a_cell_alone_runs_nothing_of_the_solvers(self, er, monkeypatch):
+        roster = approved_roster(er)
+        pin = pinned(er, "Amal", 3, "N", PinOrigin.MANAGER)
+
+        def the_solvers_code(*args):
+            raise AssertionError("the solver's code ran")
+        monkeypatch.setattr("rosters.cells.assemble", the_solvers_code)
+        monkeypatch.setattr("rosters.cells.scored", the_solvers_code)
+        cells = MonthCells(er, JUNE)
+
+        assert cells.may_hold("Amal", day(3), EDIT, "D") == Answer(replaces=pin)
+        assert cells.may_change("Amal", day(3), EDIT) == Answer(replaces=pin)
+        assert cells.cannot_hold("Emad", day(3), "N") == Reason("shift_not_allowed", shift="N")
+        assert cells.set_aside(pin) is None
+        with pytest.raises(AssertionError, match="the solver's code ran"):
+            cells.breaks(roster.grid, [NewCell("Emad", day(9), "D")])
+
+
+# What a change newly breaks, compared on the violations alone: those of the grid, and those of the grid it would make.
+
+
+def headcount(present: int, shift: str = "D", date: str = "2026-06-09") -> dict:
+    """A D or N shift-day that takes two or three nurses, holding `present`."""
+    return {"rule": "headcount", "nurse": None, "date": date, "text": f"{present} work {shift}", "shift": shift,
+            "present": present, "minimum": 2, "maximum": 3}
+
+
+def skill_need(present: int, skill: str = "ICU", shift: str = "N", date: str = "2026-06-09") -> dict:
+    """A shift-day that needs two nurses holding `skill`, with `present` of them on it, as the solver states it."""
+    return {"rule": "skill_need", "nurse": None, "date": date, "shift": shift, "skill": skill, "present": present, "minimum": 2,
+            "text": f"skill need: {date} {shift} has {present} holding {skill}, needs 2 ({2 - present} short)"}
+
+
+OVERTIME = {"rule": "hours_bounds", "nurse": "Amal", "date": None, "text": "overtime: Amal 60 > cap 48"}
+NO_LEADER = {"rule": "team_leader", "nurse": None, "date": "2026-06-09", "text": "team leader: 2026-06-09 D has none", "shift": "D"}
+
+
+def test_what_the_roster_in_force_already_breaks_is_not_new():
+    assert newly_broken([OVERTIME, NO_LEADER, headcount(0)], [OVERTIME, NO_LEADER, headcount(0)]) == []
+
+
+def test_a_headcount_nearer_its_range_is_not_new():
+    assert newly_broken([headcount(0)], [headcount(1)]) == []
+    assert newly_broken([headcount(5)], [headcount(4)]) == []
+
+
+def test_a_headcount_further_from_its_range_is_new():
+    assert newly_broken([headcount(1)], [headcount(0)]) == [headcount(0)]
+    assert newly_broken([headcount(4)], [headcount(5)]) == [headcount(5)]
+
+
+def test_a_headcount_broken_on_another_shift_day_is_new():
+    assert newly_broken([headcount(0, "D")], [headcount(0, "D"), headcount(1, "N")]) == [headcount(1, "N")]
+    assert newly_broken([headcount(0)], [headcount(0), headcount(1, date="2026-06-10")]) == [headcount(1, date="2026-06-10")]
+
+
+def test_another_rule_whose_words_differ_is_broken_further_so_new():
+    further = OVERTIME | {"text": "overtime: Amal 72 > cap 48"}
+
+    assert newly_broken([OVERTIME], [further]) == [further]
+
+
+def test_the_same_rule_on_another_shift_of_the_day_is_new():
+    on_nights = NO_LEADER | {"shift": "N", "text": "team leader: 2026-06-09 N has none"}
+
+    assert newly_broken([NO_LEADER], [NO_LEADER, on_nights]) == [on_nights]
+
+
+def test_a_roster_in_force_that_breaks_nothing_makes_everything_new():
+    assert newly_broken([], [OVERTIME, headcount(1)]) == [OVERTIME, headcount(1)]
+
+
+def test_a_skill_need_narrowed_is_not_new():
+    assert newly_broken([skill_need(0)], [skill_need(1)]) == []
+
+
+def test_a_skill_need_as_short_as_before_is_not_new():
+    assert newly_broken([skill_need(1)], [skill_need(1)]) == []
+
+
+def test_a_skill_need_widened_is_new():
+    assert newly_broken([skill_need(1)], [skill_need(0)]) == [skill_need(0)]
+
+
+def test_a_need_of_another_skill_on_the_same_shift_day_is_new():
+    triage = skill_need(1, skill="Triage")
+
+    assert newly_broken([skill_need(0)], [skill_need(1), triage]) == [triage]
+
+
+def test_a_skill_need_on_another_shift_day_is_new():
+    on_days = skill_need(1, shift="D")
+    next_night = skill_need(1, date="2026-06-10")
+
+    assert newly_broken([skill_need(0)], [skill_need(0), on_days, next_night]) == [on_days, next_night]
+
+
+def test_a_skill_need_that_does_not_state_its_figures_is_compared_by_its_words():
+    def worded(present: int) -> dict:
+        return {key: value for key, value in skill_need(present).items() if key not in ("skill", "present", "minimum")}
+
+    assert newly_broken([worded(1)], [worded(1)]) == []
+    assert newly_broken([worded(0)], [worded(1)]) == [worded(1)]

@@ -653,7 +653,7 @@ class TestCertificatesAndLicences:
 
         def inputs() -> list[str]:
             return [json.dumps(assembled.input, sort_keys=True)
-                    for assembled in (built(er), assemble(er, JUNE, time_limit=20, facts=True),
+                    for assembled in (built(er), assemble(er, JUNE, time_limit=20, over=True),
                                       assemble_replan(er, JUNE, dt.date(2026, 6, 15), {}, time_limit=20))]
 
         before = inputs()

@@ -20,8 +20,8 @@ from nurses.api import MonthText
 from requesting import deciding, making
 from requesting.models import Preference, Request, RequestState, RequestStep, RequestWindow, WindowState
 from requesting.windows import state_today
-from rosters.models import PinnedCell, PinOrigin, Roster, RosterVersion
-from rosters.pins import AsideWhy, Judge
+from rosters.cells import REQUEST, AsideWhy, MonthCells
+from rosters.models import Roster, RosterVersion
 from solves.api import manager
 from units.models import Unit
 from units.scope import unit_in_scope
@@ -149,23 +149,21 @@ class UnitRequestRow(Schema):
 
 def _unit_rows(unit: Unit, requests: list[Request]) -> list[UnitRequestRow]:
     months = {row.window.month for row in requests}
-    judges = {month: Judge(unit, month) for month in months}
+    cells_of = {month: MonthCells(unit, month) for month in months}
     rosters = {roster.month: roster for roster in Roster.objects.filter(unit=unit, month__in=months)}
-    held = {(pin.nurse_id, pin.date): pin for pin in PinnedCell.objects.current().filter(
-        unit=unit, nurse__in={row.nurse_id for row in requests}, date__in={row.date for row in requests})}
     rows = []
     for row in requests:
-        judge, decision = judges[row.window.month], deciding.Decision(unit, row.nurse, row, rosters.get(row.window.month))
+        cells, decision = cells_of[row.window.month], deciding.Decision(unit, row.nurse, row, rosters.get(row.window.month))
         pending = row.state == RequestState.PENDING
-        mine = held.get((row.nurse_id, row.date))
+        aside = cells.set_aside(row.pin) if row.pin else None
+        # Said whether or not it can be accepted now, and only of the manager's own pin: a swap's or a cover's refuses the
+        # acceptance instead, and says so in its refusal.
+        replaced = cells.managers_pin_replaced(row.nurse.user.username, row.date, REQUEST) if pending else None
         rows.append(UnitRequestRow(
             id=row.pk, hospital_id=row.nurse.user.username, full_name=row.nurse.user.full_name, date=row.date, shift=row.code,
-            state=row.state, promised=row.pin.code if row.pin else None,
-            set_aside=judge.why(row.nurse_id, row.date, row.pin.shift) if row.pin else None,
-            accept_refusal=deciding.refusal_to_pin(decision, row.shift, row.shift.code if row.shift else None, judge)
-            if pending else None,
-            replaces_pin=mine.code if pending and mine is not None and mine.origin == PinOrigin.MANAGER else None,
-            steps=step_rows(list(row.steps.all()))))
+            state=row.state, promised=row.pin.code if row.pin else None, set_aside=aside.why if aside else None,
+            accept_refusal=deciding.refusal_to_pin(decision, row.shift, cells) if pending else None,
+            replaces_pin=replaced, steps=step_rows(list(row.steps.all()))))
     return rows
 
 

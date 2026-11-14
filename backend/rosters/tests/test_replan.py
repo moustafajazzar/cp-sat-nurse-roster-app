@@ -15,7 +15,7 @@ from notifications.models import Event, Notification, SolveOutcome
 from nurses import membership
 from hospital.models import HospitalSettings, Shift
 from nurses.models import Placement
-from rosters.approved import NewCell
+from rosters.cells import NewCell
 from rosters.in_force import Origin, hold
 from rosters.in_force import change as change_in_force
 from rosters.drafts import FROZEN

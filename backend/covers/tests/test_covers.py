@@ -13,7 +13,7 @@ from covers.tasks import expire_covers
 from covers.tests.conftest import (MONTH, cover_page, covers_of, night_needs, offered, ok, open_cover, opened, record_leave,
                                    refusals, rules_require, wider_day, withdraw)
 from notifications.tests.test_events import as_user
-from nurses.models import NurseProfile, Placement
+from nurses.models import NurseProfile
 from requesting.tests.conftest import asked, decided as request_decided, opened as opened_window
 from rosters.tests.test_pins import icu, off, pin
 from rosters.tests.test_review import holding, solved, submitted
@@ -123,23 +123,6 @@ class TestWhoIsLeftOut:
     def test_a_required_skill_of_hers_expired_before_it_and_the_cover_is_still_judged(self, in_force, mona):
         """Her shift on a barred day is the grid's to break, not a pin the solver refuses."""
         holding("Amal", "BLS", dt.date(2026, 6, 8), required=True)
-
-        assert not amal_could(opened(mona, in_force, 9, "N"))
-
-    def test_leave(self, in_force, mona):
-        ok(record_leave(mona, in_force, "Amal", 9), 201)
-
-        assert not amal_could(opened(mona, in_force, 9, "N"))
-
-    def test_her_dates(self, in_force, mona):
-        NurseProfile.objects.filter(user__username="Amal").update(start_date=dt.date(2026, 6, 10))
-
-        page = opened(mona, in_force, 9, "N")
-
-        assert not amal_could(page)
-
-    def test_her_allowed_shifts(self, in_force, mona):
-        Placement.objects.filter(nurse__user__username="Amal").update(allowed_shifts=["D"])
 
         assert not amal_could(opened(mona, in_force, 9, "N"))
 

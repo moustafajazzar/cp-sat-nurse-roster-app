@@ -19,11 +19,11 @@ the figures from the solver's own per-nurse accounting on the roster in force, t
 stored: it is read again each time it is asked for.
 
 Only the unit's manager reads the list, as they read the leave and the attributes it rests on. An acceptance is judged again
-for its nurse alone (`CoverMonth.refusal_for`), the same way, and refused in her own words: what is hers is said in full (her
-leave, her dates, her shifts, her request, a rule broken on her own row) and so is what My roster shows (a cell's shift, the
-shift-day's headcount); a rule resting on a colleague, a team leader, both genders or a skill need on the shift-day, is said
-only as the unit's rules on that day, as a swap's proposer reads it (`swaps.judging`). So the lack's line for a skill need, which
-names the skill and how many hold it, is the manager's alone."""
+for its nurse alone (`CoverMonth.refusal_for`), the same way, and refused in her own words. Every reason about her cell is hers,
+so it is said in full. Of what her taking it newly breaks, the cell judgement says who may read each (`rosters.cells.reader_of`):
+a rule broken on her own row, and what My roster shows, are said in full; anything else, a colleague's rule or who holds which
+attribute on the shift-day, only as the unit's rules on that day, as a swap's proposer reads it (`swaps.judging`). So the lack's
+line for a skill need, which names the skill and how many hold it, is the manager's alone."""
 from __future__ import annotations
 
 import datetime as dt
@@ -33,11 +33,12 @@ from nurse_roster.request import load_request
 
 from accounts.models import Role
 from hospital.models import Shift
-from rosters.approved import ApprovedMonth, NewCell, newly_broken, with_pins
-from rosters.editing import Checked, accounted, scored
-from rosters.models import PinOrigin, Roster
+from nurses.models import NurseProfile
+from rosters.cell_words import bar_said
+from rosters.cells import COVER, PRIVATE, SHOWN, MonthCells, NewCell, Reason, reader_of
+from rosters.checking import Checked, accounted
+from rosters.models import Roster
 from rosters.pins import long_date
-from solves.input import assemble
 from solves.result import headcount_of, shift_day
 
 # The solver's check, quoted beside each, names the skill and the figures, so a need's line does not read them out of its words.
@@ -86,51 +87,67 @@ def _lack_words(violation: dict) -> str:
     return f"{said} (the solver's check: {violation['text']})."
 
 
-class CoverMonth(ApprovedMonth):
-    """The roster in force's month as a cover reads it, read once for every nurse judged."""
+class CoverMonth:
+    """The roster in force's month as a cover reads it, read once for every nurse judged. Whether her cell can hold the shift,
+    and what her taking it newly breaks, are asked of the month's cells (`rosters.cells`)."""
 
     def __init__(self, roster: Roster, day: dt.date, shift: Shift):
-        super().__init__(roster)
+        self.roster, self.unit, self.month = roster, roster.unit, roster.month
         self.day, self.shift = day, shift
-        self.input = assemble(self.unit, self.month).input
-        self.before = scored(self.input, roster.grid)
+        self.cells = MonthCells(self.unit, self.month)
+        # Everyone with a row on the grid, one no longer in the month included, whom the cells do not plan for.
+        on_grid = NurseProfile.objects.filter(user__username__in=list(roster.grid)).select_related("user")
+        self.on_grid = {nurse.user.username: nurse for nurse in on_grid}
+
+    @property
+    def before(self) -> Checked:
+        """The roster in force's check with the solver's own code, on the month as it stands."""
+        return self.cells.checked(self.roster.grid)
+
+    def cell(self, hospital_id: str, day: dt.date) -> str:
+        return self.roster.grid.get(hospital_id, {}).get(day.isoformat(), "")
 
     def exclusion(self, hospital_id: str) -> str | None:
         """Why this nurse could not take the cover before her grid is checked, as a key worded for her: `not_on_grid`,
         `not_staff`, `works`, `not_in_month`, `outside_dates`, `leave`, `on_probation`, `barred`, `shift_not_allowed` or
         `request`."""
+        return self._excluded(hospital_id)[0]
+
+    def _excluded(self, hospital_id: str) -> tuple[str | None, Reason | None]:
+        """`exclusion`'s key, with the cell judgement's reason behind it when there is one, so that its words read the bar from
+        the one answer."""
         nurse = self.on_grid.get(hospital_id)
         if hospital_id not in self.roster.grid or nurse is None:
-            return "not_on_grid"
+            return "not_on_grid", None
         if nurse.user.role != Role.STAFF_NURSE:
-            return "not_staff"
+            return "not_staff", None
         if self.cell(hospital_id, self.day):
-            return "works"
-        serving = self.serving.get(hospital_id)
-        why = self.judge.day_why(serving.pk, self.day) if serving else "not_in_month"
-        if why is not None:
-            return why
-        if serving.pk in self.judge.on_probation:
-            return "on_probation"  # She fills no gap: a shift is fully staffed without her.
-        why = self.judge.shift_why(serving.pk, self.day, self.shift)
-        if why is not None:
-            # The cover's own shift is one the unit works, so anything but the bar is her allowed shifts.
-            return "barred" if why == "barred" else "shift_not_allowed"
-        pin = self.pins.get((nurse.pk, self.day))
-        if pin is not None and pin.origin == PinOrigin.REQUEST:
-            return "request"
-        return None
+            return "works", None
+        # Whether she is there that day at all is asked first, as of a day off, so that a nurse on probation who is also on
+        # leave reads of her leave.
+        absent = self.cells.cannot_hold(hospital_id, self.day, None)
+        if absent is not None:
+            return absent.why, absent
+        if hospital_id in self.cells.on_probation:
+            return "on_probation", None  # She fills no gap: a shift is fully staffed without her.
+        reason = self.cells.may_hold(hospital_id, self.day, COVER, self.shift).reason
+        if reason is None:
+            return None, None
+        if reason.why == "held":
+            return reason.origin.value, reason  # A request's: the one pin that does not yield to a cover.
+        # The cover's own shift is one the unit works, so anything but the bar is her allowed shifts.
+        return ("barred" if reason.why == "barred" else "shift_not_allowed"), reason
 
     def refusal_for(self, hospital_id: str) -> list[str]:
         """Why she cannot take it now, in her own words: nothing when she can."""
         on = long_date(self.day)
-        why = self.exclusion(hospital_id)
+        why, reason = self._excluded(hospital_id)
         if why == "works":
-            held = self.shifts.get(self.cell(hospital_id, self.day))
+            held = self.cells.shift(self.cell(hospital_id, self.day))
             what = f"{held.display_name} ({held.code})" if held else self.cell(hospital_id, self.day)
             return [f"You already work {what} on {on}, so you cannot take this cover."]
         if why == "barred":
-            return [f"{self.judge.bar_said(self.serving[hospital_id].pk, self.day, 'Your')}, so you cannot take this cover."]
+            return [f"{bar_said(reason, 'Your')}, so you cannot take this cover."]
         if why is not None:
             return [{
                 "not_on_grid": f"You have no row on the {self.unit.name} roster for {self.month:%B %Y}, so you cannot take "
@@ -152,31 +169,28 @@ class CoverMonth(ApprovedMonth):
             return ["This cover cannot be checked against the roster now. Ask your manager."]
         said = []
         for violation in broken:
-            text = violation["text"]
-            if violation["nurse"] == hospital_id:
+            text, reader = violation["text"], reader_of(violation)
+            if reader == PRIVATE and violation["nurse"] == hospital_id:
                 said.append(f"This breaks a rule for you: {text}")
-            elif violation["rule"] == "headcount":
+            elif reader == SHOWN:
                 said.append(f"Taking this cover would break the unit's rules: {text}")
             else:
-                # A colleague's rule, or a team leader, both genders or a skill need on a shift-day, would say who holds which
-                # attribute.
                 said.append(f"You cannot take this cover: the shifts on {on} would break the unit's rules.")
         return list(dict.fromkeys(said))
 
     def with_her(self, hospital_id: str) -> tuple[Checked, list[dict]]:
         """Her grid's check, and the hard rules it newly breaks."""
-        new_cells = [NewCell(hospital_id, self.day, self.shift.code)]
-        after = scored(with_pins(self.input, self, new_cells), self.grid_after(new_cells))
-        return after, (newly_broken(self.before.violations, after.violations) if after.answer else [])
+        broken = self.cells.breaks(self.roster.grid, [NewCell(hospital_id, self.day, self.shift.code)])
+        return broken.after, broken.violations
 
     def full(self) -> str | None:
         """Why one more nurse cannot help, when the shift-day is already at its maximum headcount."""
-        problem = load_request(self.input).problem
+        problem = load_request(self.cells.solve_input).problem
         if not problem.department.headcount_enabled:
             return None
         index = (self.day - self.month).days
         # The solver's own reading: a nurse on probation counts toward no headcount (`problem.counted`).
-        uncounted = {row["id"] for row in self.input["nurses"] if row.get("on_probation")}
+        uncounted = {row["id"] for row in self.cells.solve_input["nurses"] if row.get("on_probation")}
         for headcount in problem.department.headcounts:
             if headcount.shift != self.shift.code:
                 continue
@@ -200,8 +214,8 @@ def judge(roster: Roster, day: dt.date, shift: Shift) -> CoverJudged:
     judged.full = month.full()
     if judged.full:
         return judged
-    figures = accounted(month.input, roster.grid) or {}
-    counted = month.input["general"].get("hours_rule_enabled", True)
+    figures = accounted(month.cells.solve_input, roster.grid) or {}
+    counted = month.cells.solve_input["general"].get("hours_rule_enabled", True)
     for hospital_id in sorted(roster.grid):
         if month.exclusion(hospital_id) is not None:
             continue
@@ -213,11 +227,11 @@ def judge(roster: Roster, day: dt.date, shift: Shift) -> CoverJudged:
         if broken or hospital_id not in figures:
             continue
         nurse, row = month.on_grid[hospital_id], figures[hospital_id]
-        pin = month.pins.get((nurse.pk, day))
+        replaced = month.cells.may_change(hospital_id, day, COVER).replaces
         judged.nurses.append(CouldTake(
             hospital_id=hospital_id, name=nurse.user.full_name or hospital_id, worked=row["hours_worked"],
             owed=row["required"] if counted else None, overtime_this_year=row["carry_over"]["ytd_overtime"],
             makes_whole=not _on(after.violations, day, shift.code),
-            replaces=pin.origin if pin is not None else None))
+            replaces=replaced.origin if replaced is not None else None))
     judged.nurses.sort(key=lambda could: (could.balance, could.overtime_this_year, could.name.casefold(), could.hospital_id))
     return judged

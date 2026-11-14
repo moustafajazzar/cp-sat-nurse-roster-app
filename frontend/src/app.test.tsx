@@ -7207,6 +7207,20 @@ describe("the roster page", () => {
       expect(within(menu).queryAllByRole("menuitem")).toEqual([])
     })
 
+    it.each(["swap", "cover"])("a pin from an accepted %s is the manager's to change or clear here", async (origin) => {
+      const pinned = { ...DRAFT, pins: [{ hospital_id: "h1", full_name: "Amal Saleh", date: "2026-06-01", shift: "D", origin, set_aside: null }] }
+      const { user } = start("/roster", editing({ [`GET ${UNIT}/roster`]: { body: { ...EMPTY, draft: pinned } } }))
+
+      await user.click(await cellNamed(`Amal Saleh, 1 June: Day, pinned by an accepted ${origin}`))
+
+      const menu = await screen.findByRole("menu")
+      expect(menu).not.toHaveTextContent("Change it there")
+      expect(within(menu).getByRole("menuitem", { name: /Pin Night/ })).toBeInTheDocument()
+      expect(within(menu).getByRole("menuitem", { name: "Pin a day off" })).toBeInTheDocument()
+      await user.click(within(menu).getByRole("menuitem", { name: "Clear the pin" }))
+      expect(await cellNamed(`Amal Saleh, 1 June: Day, pin to be cleared, not saved`)).toBeInTheDocument()
+    })
+
     it("shows the answer for the edits as they are, never an older one that arrives late", async () => {
       const { user, router } = start("/roster", editing())
       const checks = hold(`POST ${UNIT}/roster/check`)

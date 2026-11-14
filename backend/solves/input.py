@@ -66,11 +66,11 @@ def _preferred(unit: Unit, month: dt.date) -> dict[str, dict[str, list[str]]]:
     return preferred
 
 
-def assemble(unit: Unit, month: dt.date, *, time_limit: int = 1, chain=None, facts: bool = False) -> Assembled:
+def assemble(unit: Unit, month: dt.date, *, time_limit: int = 1, chain=None, over: bool = False) -> Assembled:
     """`time_limit` matters only to an input that will be sent. A pin joins its nurse's block only if it counts: leave wins
-    over one, as the solver refuses a shift pinned on a leave date, and `rosters.pins` sets aside that pair and every other a
-    row can come to hold, so that none reaches the solver as a failed solve. `facts` is a close's, of a month that is over
-    (`rosters.pins.month_pins`).
+    over one, as the solver refuses a shift pinned on a leave date, and that pair and every other a row can come to hold is
+    set aside (`rosters.cells`), so that none reaches the solver as a failed solve. `over` is a close's, of a month that is
+    over, whose pins are facts (`rosters.pins.month_pins`).
 
     Each nurse starts from her carry-over (`closes.chain`): the latest closed month's, projected forward through the approved
     rosters in between, or her opening values. `chain` is the reading to share, a close's among them, which takes no projection.
@@ -78,7 +78,7 @@ def assemble(unit: Unit, month: dt.date, *, time_limit: int = 1, chain=None, fac
     from closes.chain import CARRIED, Chain  # The chain assembles the months before, through this.
 
     chain = chain or Chain()
-    pins = month_pins(unit, month, facts=facts)
+    pins = month_pins(unit, month, over=over)
     shift_hours = {shift.code: shift.hours for shift in Shift.objects.filter(active=True)}
     label = month.strftime("%Y-%m")
     assembled = Assembled(input={
@@ -175,14 +175,14 @@ def _renamed_in_histories(assembled: Assembled) -> dict[str, str]:
 
 
 def assemble_replan(unit: Unit, month: dt.date, replan_from: dt.date, in_force: dict[str, dict[str, str]], *,
-                    time_limit: int = 1, chain=None, facts: bool = False) -> Assembled:
+                    time_limit: int = 1, chain=None, over: bool = False) -> Assembled:
     """A re-plan's input: the month as `assemble` builds it, with the roster in force as `published` and the date to plan again
     from. The solver itself makes every earlier day a fact: a pin that counts, of any origin, wins; then leave and the days
     outside a nurse's dates, which it holds off; then the roster in force. A pin set aside reaches no solve, so its day is the
     roster in force's like any other. `published` holds exactly the month's nurses, as the solver asks: a nurse not on the roster
     in force (one who joined since) worked nothing, and a row of a nurse no longer in the month is left out, so the new version
     has none."""
-    assembled = assemble(unit, month, time_limit=time_limit, chain=chain, facts=facts)
+    assembled = assemble(unit, month, time_limit=time_limit, chain=chain, over=over)
     in_force = in_current_codes(in_force)
     days = [day.isoformat() for day in _days_of(month)]
     assembled.input["published"] = {row["id"]: {day: in_force.get(row["id"], {}).get(day, "") for day in days}

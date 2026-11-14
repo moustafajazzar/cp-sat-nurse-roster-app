@@ -14,7 +14,8 @@ from ninja import Field, Query, Router, Schema
 
 from hospital.api import StrictSchema, refuse
 from rosters.api import GridCheck, _grid_check
-from rosters.models import PinnedCell, PinOrigin, Roster
+from rosters.cells import SWAP, MonthCells
+from rosters.models import Roster
 from rosters.review import name_of
 from solves.api import MonthFilter, chosen_month, manager
 from swaps import steps
@@ -95,13 +96,13 @@ def _decision(request: HttpRequest, unit_id: UUID, swap_id: UUID) -> SwapDecisio
     if swap is None:
         raise Http404("There is no such swap in your unit.")
     roster = Roster.objects.select_related("unit").get(pk=swap.roster_id)
-    # Only while it may still be approved: once it has ended, no approval will replace anything.
-    pins = {(pin.nurse_id, pin.date): pin for pin in PinnedCell.objects.current().filter(
-        unit=unit, origin=PinOrigin.MANAGER, nurse__in=[cell.nurse_id for cell in swap.cells.all()])} if swap.waiting else {}
-    cells = [DecisionCell(**row.dict(), now=roster.grid.get(row.hospital_id, {}).get(row.date.isoformat(), ""),
-                          replaces_pin=pins[(cell.nurse_id, cell.date)].code if (cell.nurse_id, cell.date) in pins else None)
-             for row, cell in zip(swap_cells(swap), swap.cells.all())]
-    answer = SwapDecision(swap=unit_row(swap), cells=cells, check=None, cost_before=None, cost_after=None, delta=None,
+    # Only while it may still be approved: once it has ended, no approval will replace anything. The page says what the
+    # manager's own pin on a cell holds before they approve a swap that replaces it.
+    cells = MonthCells(unit, roster.month) if swap.waiting else None
+    rows = [DecisionCell(**row.dict(), now=roster.grid.get(row.hospital_id, {}).get(row.date.isoformat(), ""),
+                         replaces_pin=cells.managers_pin_replaced(row.hospital_id, row.date, SWAP) if cells else None)
+            for row in swap_cells(swap)]
+    answer = SwapDecision(swap=unit_row(swap), cells=rows, check=None, cost_before=None, cost_after=None, delta=None,
                           problems=[], approve_refusal=None)
     state = state_now(swap)
     if state not in WAITING:

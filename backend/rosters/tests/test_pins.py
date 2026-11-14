@@ -17,7 +17,7 @@ from rosters.models import PinEnded, PinnedCell, PinOrigin, Roster
 from solves import running
 from solves.input import assemble, solver_refusal
 from solves.models import Solve
-from solves.tests.conftest import MONTH, NURSES, job, result_of, roster_of, sample_rules, started
+from solves.tests.conftest import MONTH, NURSES, job, nurse_in, result_of, roster_of, sample_rules, started
 
 pytestmark = pytest.mark.django_db
 
@@ -447,13 +447,6 @@ class TestAllowedShifts:
     def body(self, allowed) -> dict:
         return {"allowed_shifts": allowed}
 
-    def test_a_pin_outside_them_is_refused_on_save_and_named_on_a_check(self, mona, er, solver):
-        solved(mona, er, solver)
-
-        response = save(mona, er, pin("Emad", 3, "N"))
-
-        assert response.status_code == 422 and "allowed" in response.json()["detail"][0]["msg"]
-
     def test_narrowing_them_past_a_pin_is_refused_naming_the_day(self, mona, er, solver):
         solved(mona, er, solver)
         saved(mona, er, pin("Amal", 3, "N"))
@@ -773,15 +766,6 @@ class TestLeaveOnAPinnedDay:
         assert response.json()["pins_removed"] == []
         assert not PinnedCell.objects.current().exists()
 
-    def test_pinning_on_a_leave_day_is_refused_a_shift_or_a_day_off(self, mona, er, solver):
-        solved(mona, er, solver)
-        record_leave(mona, er, "Amal", 3)
-
-        for edit in (pin("Amal", 3, "N"), off("Amal", 3)):
-            response = save(mona, er, edit)
-            assert response.status_code == 422 and "on leave" in response.json()["detail"][0]["msg"]
-        assert "on leave" in check(mona, er, pin("Amal", 3, "N"))["refusals"][0]["reason"]
-
     def test_a_row_holding_that_pair_all_the_same_is_dropped_and_is_no_failed_solve(self, mona, er, solver):
         solved(mona, er, solver)
         saved(mona, er, pin("Amal", 3, "N"))
@@ -873,7 +857,7 @@ class TestLastSolve:
         assert month_of(mona, er)["last_solve"]["id"] == failed["id"]
 
 
-class TestRequestsAndSwapsPins:
+class TestARequestsPin:
     def row(self, er, origin) -> PinnedCell:
         return PinnedCell.objects.create(unit=er, nurse=profile("Amal"), date="2026-06-03", shift=None, origin=origin,
                                          pinned_by=User.objects.get(username="mona"))
@@ -887,12 +871,71 @@ class TestRequestsAndSwapsPins:
 
         assert response.status_code == 422 and "accepted request" in response.json()["detail"][0]["msg"]
 
+    def test_the_pin_is_said_before_anything_else_that_stops_the_edit(self, mona, er, solver, make_user):
+        """A shift she may not work, a date since left outside her dates, a nurse with no row on the draft: the manager is
+        still sent to the request, where that cell is changed."""
+        solved(mona, er, solver)
+        PinnedCell.objects.create(unit=er, nurse=profile("Emad"), date="2026-06-03", shift=None, origin=PinOrigin.REQUEST,
+                                  pinned_by=User.objects.get(username="mona"))
+        joined_since = nurse_in(er, make_user, "Faris")
+        PinnedCell.objects.create(unit=er, nurse=joined_since, date="2026-06-03", shift=None, origin=PinOrigin.REQUEST,
+                                  pinned_by=User.objects.get(username="mona"))
+        words = "This pin comes from an accepted request, on 3 June 2026, so change it there."
+
+        assert save(mona, er, pin("Emad", 3, "N")).json()["detail"][0]["msg"] == words
+        assert save(mona, er, off("Faris", 3)).json()["detail"][0]["msg"] == words
+        NurseProfile.objects.filter(user__username="Emad").update(end_date=dt.date(2026, 6, 2))
+        assert save(mona, er, off("Emad", 3)).json()["detail"][0]["msg"] == words
+        assert save(mona, er, clear("Emad", 3)).json()["detail"][0]["msg"] == words, "set aside, it still holds its cell"
+
     def test_it_reaches_a_solve_like_any_other(self, mona, er, solver):
         solved(mona, er, solver)
         self.row(er, PinOrigin.REQUEST)
 
         assert input_row(assemble(er, dt.date(2026, 6, 1)).input, "Amal")["pinned"] == {"2026-06-03": ""}
         assert month_of(mona, er)["draft"]["pins"][0]["origin"] == "request"
+
+
+@pytest.mark.parametrize("origin", [PinOrigin.SWAP, PinOrigin.COVER])
+class TestASwapsOrACoversPin:
+    """Amal works Day on the 3rd in the solve, and the pin holds her off, on the draft as its origin would have left it."""
+
+    def row(self, er, origin) -> PinnedCell:
+        roster = Roster.objects.get(unit=er)
+        roster.grid["Amal"]["2026-06-03"] = ""
+        roster.save(update_fields=["grid"])
+        return PinnedCell.objects.create(unit=er, nurse=profile("Amal"), date="2026-06-03", shift=None, origin=origin,
+                                         pinned_by=User.objects.get(username="mona"))
+
+    def pins(self) -> list[tuple[str, str, str]]:
+        return [(row.origin, row.code, row.removed_why)
+                for row in PinnedCell.objects.filter(nurse__user__username="Amal", date="2026-06-03").order_by("pinned_at")]
+
+    def test_a_managers_edit_replaces_it(self, mona, er, solver, origin):
+        solved(mona, er, solver)
+        self.row(er, origin)
+
+        saved(mona, er, pin("Amal", 3, "N"))
+
+        assert self.pins() == [(origin, "", "replaced"), (PinOrigin.MANAGER, "N", "")]
+        assert Roster.objects.get(unit=er).grid["Amal"]["2026-06-03"] == "N"
+
+    def test_a_clear_ends_it_and_gives_the_cell_back_to_its_solve(self, mona, er, solver, origin):
+        solved(mona, er, solver)
+        self.row(er, origin)
+
+        saved(mona, er, clear("Amal", 3))
+
+        assert self.pins() == [(origin, "", "cleared")]
+        assert Roster.objects.get(unit=er).grid["Amal"]["2026-06-03"] == "D"
+
+    def test_an_edit_asking_what_it_holds_already_changes_nothing(self, mona, er, solver, origin):
+        solved(mona, er, solver)
+        self.row(er, origin)
+
+        saved(mona, er, off("Amal", 3))
+
+        assert self.pins() == [(origin, "", "")]
 
 
 class TestTheAuditLog:
