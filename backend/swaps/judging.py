@@ -1,12 +1,12 @@
 """Whether a swap can work, and how that is said to each reader: the one place both are decided, so the proposer's words and the
 manager's cannot drift apart.
 
-The proposer may learn nothing about a colleague that My roster would not show them: a
-colleague's leave reads as a day off there, and a nurse never reads a colleague's attributes (allowed shifts, Ramadan reduction,
-breastfeeding, score, team leader, gender, hours). So every reason that rests on a colleague's facts, whatever it is, reaches the
-proposer as the same sentence, "This swap cannot work for Badr Omar on 5 June 2026.": no rule, no text from the solver, no cost.
-A reason about the proposer's own cells may be named, as may what any reader of My roster sees (a cell's shift, a date passed,
-how many work a shift that day). The unit's manager reads every reason in full, as they read the leave and the attributes.
+The proposer may learn nothing about a colleague that My roster would not show them. Which reasons, and which violations a swap
+newly breaks, are private to their nurse, shown to anyone or hidden from every nurse is the cell judgement's to say
+(`rosters.cells.READERS`, `reader_of`); a swap only chooses between the proposer's words and its hidden sentences. So every reason
+that rests on a colleague's facts, whatever it is, reaches the proposer as the same sentence, "This swap cannot work for Badr Omar
+on 5 June 2026.": no rule, no text from the solver, no cost. What My roster shows is checked first, so that a hidden reason
+cannot be told apart from a shown one. The unit's manager reads every reason in full, as they read the leave and the attributes.
 
 What is left is the one bit a refusal is: a nurse who proposes the same change day after day can learn on which days a
 colleague cannot take a shift, without learning why. That comes with refusing at once."""
@@ -20,15 +20,12 @@ from nurses import membership
 from nurses.models import NurseProfile
 from requesting.models import what_of
 from rosters.cell_words import bar_said, manager_said
-from rosters.cells import SWAP, MonthCells, NewCell, Reason
+from rosters.cells import PRIVATE, SHOWN, SWAP, MonthCells, NewCell, Reason, reader_of
 from rosters.checking import Checked
 from rosters.models import Roster
 from rosters.pins import long_date
 from rosters.versions import Grid
 from swaps.models import WAITING, Swap, SwapCell
-
-# A shift-day rule with no nurse that says nothing of anyone: how many work it, which any reader of the roster can count.
-SAID_AS_IT_IS = {"headcount"}
 
 
 @dataclass(frozen=True)
@@ -104,9 +101,9 @@ class SwapMonth:
         return self.roster.grid.get(hospital_id, {}).get(day.isoformat(), "")
 
 
-def _in_her_words(reason: Reason, on: str, month: dt.date) -> str | None:
-    """Why the proposer's own cell cannot hold its change, said to her in full. None for a reason a swap's own rules, checked
-    first, leave no room for: a shift the unit does not work, and the night shift on probation."""
+def _in_her_words(reason: Reason, on: str, month: dt.date) -> str:
+    """Why the proposer's own cell cannot hold its change, said to her in full: a private reason, since a shown one is said to
+    everyone as the manager reads it."""
     match reason.why:
         case "not_in_month":
             return f"You have no days on this roster in {month:%B %Y}."
@@ -120,7 +117,17 @@ def _in_her_words(reason: Reason, on: str, month: dt.date) -> str | None:
             return f"{reason.shift} is not one of the shifts you work."
         case "held":
             return f"Your accepted {reason.origin} holds your cell on {on}, so a swap cannot change it."
-    return None
+    raise ValueError(f"A private reason with no words for its nurse: {reason.why}.")
+
+
+def _reason_problem(reason: Reason, month: SwapMonth, new_cell: NewCell, index: int, name: str, mine: bool) -> Problem:
+    """A reason the cell judgement gives, said by its reader class: a shown one as the manager reads it, a private one in full
+    to its own nurse and as the one hidden sentence to a colleague."""
+    manager = manager_said(reason, name, new_cell.date, month.month, SWAP)
+    if reason.reader == SHOWN:
+        return Problem.said(manager, index)
+    on = long_date(new_cell.date)
+    return Problem(manager, _in_her_words(reason, on, month.month) if mine else cannot_work_for(name, new_cell.date), index)
 
 
 def _cell_problem(month: SwapMonth, new_cell: NewCell, index: int, proposer: NurseProfile | None) -> Problem | None:
@@ -142,26 +149,22 @@ def _cell_problem(month: SwapMonth, new_cell: NewCell, index: int, proposer: Nur
         # Her row sits under "On probation" on My roster, so saying so tells no one more than the roster does.
         return Problem.said(on_probation_said(month.month) if mine else
                             f"{name} is on probation in {month.month:%B %Y}, so a swap cannot change their cells.", index)
+    # What anyone may read of why the cell cannot hold its change is asked ahead of the cell's other reasons, whatever private
+    # reason stands before it.
+    shown = month.cells.shown(new_cell.hospital_id, new_cell.date, new_cell.shift)
+    if shown is not None:
+        return _reason_problem(shown, month, new_cell, index, name, mine)
     shift = month.cells.shift(new_cell.shift) if new_cell.shift else None
-    if new_cell.shift and shift is None:
-        # Asked here, ahead of the cell's other reasons, and said to everyone as the manager reads it: the unit's shifts are
-        # on My roster.
-        not_worked = Reason("shift_not_worked", shift=new_cell.shift)
-        return Problem.said(manager_said(not_worked, name, new_cell.date, month.month, SWAP), index)
     if (shift.code if shift else "") == month.cell(new_cell.hospital_id, new_cell.date):
         whose = "Your" if mine else f"{name}'s"
         what = what_of(shift)
         return Problem(f"{name}'s cell on {on} is already {what}.", f"{whose} cell on {on} is already {what}.", index)
-    hidden = cannot_work_for(name, new_cell.date)
     reason = month.cells.may_hold(new_cell.hospital_id, new_cell.date, SWAP, new_cell.shift).reason
     if reason is not None:
-        # A colleague's leave, dates, skills, allowed shifts and accepted request are hers and her manager's to read, so each
-        # is hidden alike; the proposer's own are said in full.
-        manager = manager_said(reason, name, new_cell.date, month.month, SWAP)
-        return Problem(manager, (_in_her_words(reason, on, month.month) or hidden) if mine else hidden, index)
+        return _reason_problem(reason, month, new_cell, index, name, mine)
     if (nurse.pk, new_cell.date) in month.in_other_swaps:
         # Which swaps a colleague is in is not on My roster either.
-        own = f"Your cell on {on} is already in another swap."
+        own, hidden = f"Your cell on {on} is already in another swap.", cannot_work_for(name, new_cell.date)
         return Problem(f"{name}'s cell on {on} is already in another swap.", own if mine else hidden, index)
     return None
 
@@ -173,18 +176,19 @@ def _violation_problem(violation: dict, month: SwapMonth, new_cells: list[NewCel
     nurse = month.on_grid.get(violation["nurse"]) if violation["nurse"] else None
     preceptor = month.on_grid.get(preceptors.get(violation["nurse"], ""))
     if violation["rule"] == "following" and nurse is not None and preceptor is not None:
-        # What My roster shows: her row under "On probation" with her preceptor's name, and both rows' cells.
+        # Hers, and so a colleague's to the proposer, who is never on probation; but its hidden sentence may name what My roster
+        # shows: her row under "On probation" with her preceptor's name, and both rows' cells.
         return Problem(text, f"This swap cannot work on {long_date(day)}: {name_of(nurse)} is on probation and works beside "
                              f"her preceptor, {name_of(preceptor)}, on their day shifts.")
+    reader = reader_of(violation)
+    if reader == PRIVATE and proposer is not None and violation["nurse"] == proposer.user.username:
+        return Problem(text, f"This swap breaks a rule for you: {text}")
+    if reader == SHOWN:
+        return Problem(text, f"This swap breaks the unit's rules: {text}")
     if nurse is not None:
-        if proposer is not None and nurse.pk == proposer.pk:
-            return Problem(text, f"This swap breaks a rule for you: {text}")
         # A rule of the whole month, such as hours, is said on the colleague's first cell, as any other of theirs.
         day = day or min((new_cell.date for new_cell in new_cells if new_cell.hospital_id == violation["nurse"]), default=None)
         return Problem(text, cannot_work_for(name_of(nurse), day))
-    if violation["rule"] in SAID_AS_IT_IS:
-        return Problem(text, f"This swap breaks the unit's rules: {text}")
-    # A team leader or both genders missing from a shift-day would say who holds which attribute.
     hidden = (f"This swap cannot work on {long_date(day)}: that day's shifts would break the unit's rules." if day
               else "This swap would break the unit's rules.")
     return Problem(text, hidden)

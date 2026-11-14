@@ -19,11 +19,11 @@ the figures from the solver's own per-nurse accounting on the roster in force, t
 stored: it is read again each time it is asked for.
 
 Only the unit's manager reads the list, as they read the leave and the attributes it rests on. An acceptance is judged again
-for its nurse alone (`CoverMonth.refusal_for`), the same way, and refused in her own words: what is hers is said in full (her
-leave, her dates, her shifts, her request, a rule broken on her own row) and so is what My roster shows (a cell's shift, the
-shift-day's headcount); a rule resting on a colleague, a team leader, both genders or a skill need on the shift-day, is said
-only as the unit's rules on that day, as a swap's proposer reads it (`swaps.judging`). So the lack's line for a skill need, which
-names the skill and how many hold it, is the manager's alone."""
+for its nurse alone (`CoverMonth.refusal_for`), the same way, and refused in her own words. Every reason about her cell is hers,
+so it is said in full. Of what her taking it newly breaks, the cell judgement says who may read each (`rosters.cells.reader_of`):
+a rule broken on her own row, and what My roster shows, are said in full; anything else, a colleague's rule or who holds which
+attribute on the shift-day, only as the unit's rules on that day, as a swap's proposer reads it (`swaps.judging`). So the lack's
+line for a skill need, which names the skill and how many hold it, is the manager's alone."""
 from __future__ import annotations
 
 import datetime as dt
@@ -35,7 +35,7 @@ from accounts.models import Role
 from hospital.models import Shift
 from nurses.models import NurseProfile
 from rosters.cell_words import bar_said
-from rosters.cells import COVER, MonthCells, NewCell
+from rosters.cells import COVER, PRIVATE, SHOWN, MonthCells, NewCell, reader_of
 from rosters.checking import Checked, accounted
 from rosters.models import Roster
 from rosters.pins import long_date
@@ -169,14 +169,12 @@ class CoverMonth:
             return ["This cover cannot be checked against the roster now. Ask your manager."]
         said = []
         for violation in broken:
-            text = violation["text"]
-            if violation["nurse"] == hospital_id:
+            text, reader = violation["text"], reader_of(violation)
+            if reader == PRIVATE and violation["nurse"] == hospital_id:
                 said.append(f"This breaks a rule for you: {text}")
-            elif violation["rule"] == "headcount":
+            elif reader == SHOWN:
                 said.append(f"Taking this cover would break the unit's rules: {text}")
             else:
-                # A colleague's rule, or a team leader, both genders or a skill need on a shift-day, would say who holds which
-                # attribute.
                 said.append(f"You cannot take this cover: the shifts on {on} would break the unit's rules.")
         return list(dict.fromkeys(said))
 
