@@ -23,8 +23,10 @@ import { plainRefusal, serverErrors } from "@/lib/server-errors"
 import { answersWords, cellWords, swapDays, SWAP_STATE, WAITING } from "@/lib/swap-words"
 import { hospitalTime, shortDay } from "@/lib/utils"
 import { onlyFor } from "@/session"
+import { PhoneShell, type PhoneVariant } from "@/components/phone-shell-prototype"
+import { cn } from "@/lib/utils"
 
-const searchSchema = z.object({ month: monthInAddress })
+const searchSchema = z.object({ month: monthInAddress, variant: z.enum(["a", "b", "c"]).optional().catch(undefined) })
 
 /** A staff nurse's swaps: proposing one on the roster in force, and the swaps they proposed or are in, with their answers. */
 export const Route = createFileRoute("/_signed-in/swaps")({
@@ -278,6 +280,20 @@ function SwapsPage() {
     setSaid(message)
     status.current?.focus()
   }
+  // PROTOTYPE (Staff Nurse phone, swap composer): ?variant=a|b|c proposes a swap three ways.
+  const { variant } = Route.useSearch() as { variant?: PhoneVariant }
+  if (variant) return (
+    <PhoneShell title="Swaps" current="/swaps" variant={variant} names={SWAP_NAMES}>
+      <div className="flex flex-col gap-4 p-4">
+        <p id={STATUS} role="status" ref={status} tabIndex={-1} className="text-sm font-medium text-primary outline-none empty:sr-only">{said}</p>
+        {answer?.refusal && <p>{answer.refusal}</p>}
+        {answer && !answer.refusal && (variant === "a"
+          ? <section className="flex flex-col gap-2"><h2 className="font-semibold">Propose a swap</h2><Composer key={answer.month} composer={answer} onProposed={tell} /></section>
+          : variant === "b" ? <GuidedSwap key={answer.month} composer={answer} onProposed={tell} /> : <StripSwap key={answer.month} composer={answer} onProposed={tell} />)}
+        <MySwaps names={names} status={focusAfter} tell={tell} />
+      </div>
+    </PhoneShell>
+  )
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-4">
@@ -311,5 +327,105 @@ function SwapsPage() {
       </Card>
       <MySwaps names={names} status={focusAfter} tell={tell} />
     </div>
+  )
+}
+
+/* PROTOTYPE (Staff Nurse phone, swap composer). A: today's form. B: guided steps (your shift, who takes it, what you take back,
+   review). C: you and one colleague as two rows of days; tap a day to exchange your two cells. B and C build the same cells as
+   the form and propose them for real; the server's refusals show as today. */
+const SWAP_NAMES: Record<PhoneVariant, string> = { a: "Form", b: "Guided steps", c: "Two-row strip" }
+const dayLabel = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })
+const label = (date: string) => dayLabel.format(new Date(`${date}T00:00:00Z`))
+
+function useSwapPropose(composer: SwapComposer, onProposed: (message: string) => void, reset: () => void) {
+  const queryClient = useQueryClient()
+  const propose = useProposeSwap()
+  const send = (cells: Cell[], note: string) => propose.mutate({ data: { month: composer.month, note, cells: cells.map((cell) => ({ ...cell, shift: cell.shift || null })) } }, {
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: getListMySwapsQueryKey() }); reset(); onProposed("Your swap is proposed. Your colleague is asked to accept it, then your manager decides.") },
+  })
+  const refusal = propose.isError ? [...refusalsOf(propose.error).general, ...Object.values(refusalsOf(propose.error).byCell).flat(), plainRefusal(propose.error)].filter(Boolean) : []
+  return { send, pending: propose.isPending, refusal }
+}
+
+function Chip({ code }: { code: string }) {
+  return <span className={cn("inline-grid h-7 min-w-7 place-items-center rounded-[5px] px-1 text-xs font-bold", code ? "bg-accent text-primary" : "text-muted-foreground")}>{code || "–"}</span>
+}
+
+function GuidedSwap({ composer, onProposed }: { composer: SwapComposer; onProposed: (message: string) => void }) {
+  const me = composer.nurses.find((nurse) => nurse.me)!
+  const others = composer.nurses.filter((nurse) => !nurse.me)
+  const [give, setGive] = useState<number | null>(null)
+  const [who, setWho] = useState<string | null>(null)
+  const [take, setTake] = useState<number | null>(null)
+  const [note, setNote] = useState("")
+  const reset = () => { setGive(null); setWho(null); setTake(null); setNote("") }
+  const { send, pending, refusal } = useSwapPropose(composer, onProposed, reset)
+  const colleague = others.find((nurse) => nurse.hospital_id === who)
+  const step = give === null ? 1 : who === null ? 2 : 3
+  const cells = (): Cell[] => {
+    if (give === null || !colleague) return []
+    const d = composer.days[give].date
+    const out: Cell[] = [{ hospital_id: me.hospital_id, date: d, shift: "" }, { hospital_id: colleague.hospital_id, date: d, shift: me.shifts[give] }]
+    if (take !== null) { const e = composer.days[take].date; out.push({ hospital_id: colleague.hospital_id, date: e, shift: "" }, { hospital_id: me.hospital_id, date: e, shift: colleague.shifts[take] }) }
+    return out
+  }
+  const steps = ["Your shift", "Who takes it", "What you take back"]
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="font-semibold">Propose a swap</h2>
+      <ol className="flex gap-1 text-xs">{steps.map((name, i) => <li key={name} className={cn("flex-1 rounded-full px-2 py-1 text-center", i + 1 <= step ? "bg-accent font-medium text-primary" : "bg-muted text-muted-foreground")}>{i + 1}. {name}</li>)}</ol>
+      {step === 1 && <ul className="flex flex-col divide-y rounded-lg border bg-[var(--ward-surface)]">{composer.days.map((day, i) => me.shifts[i] ? (
+        <li key={day.date}><button type="button" onClick={() => setGive(i)} className="flex min-h-12 w-full items-center gap-3 px-3 text-start"><Chip code={me.shifts[i]} /><span className="flex-1">{label(day.date)}</span><span className="text-sm text-primary">Give away</span></button></li>) : null)}</ul>}
+      {step === 2 && give !== null && <>
+        <p className="text-sm">Your <b>{me.shifts[give]}</b> on <b>{label(composer.days[give].date)}</b>. Colleagues off that day:</p>
+        <ul className="flex flex-col divide-y rounded-lg border bg-[var(--ward-surface)]">{others.filter((nurse) => !nurse.shifts[give]).map((nurse) => (
+          <li key={nurse.hospital_id}><button type="button" onClick={() => setWho(nurse.hospital_id)} className="flex min-h-12 w-full items-center gap-3 px-3 text-start"><span className="flex-1">{nurse.full_name}</span><span className="text-sm text-primary">Ask</span></button></li>))}
+          {others.every((nurse) => nurse.shifts[give]) && <li className="p-3 text-sm text-muted-foreground">Nobody is off that day.</li>}</ul>
+        <button type="button" className="self-start text-sm text-primary" onClick={() => setGive(null)}>Choose another shift</button></>}
+      {step === 3 && give !== null && colleague && <>
+        <p className="text-sm">{colleague.full_name} takes your <b>{me.shifts[give]}</b> on <b>{label(composer.days[give].date)}</b>. Take one of theirs back, on a day you are off? (optional)</p>
+        <ul className="flex max-h-64 flex-col divide-y overflow-y-auto rounded-lg border bg-[var(--ward-surface)]">{composer.days.map((day, i) => colleague.shifts[i] && !me.shifts[i] ? (
+          <li key={day.date}><button type="button" onClick={() => setTake(take === i ? null : i)} aria-pressed={take === i} className={cn("flex min-h-12 w-full items-center gap-3 px-3 text-start", take === i && "bg-accent")}><Chip code={colleague.shifts[i]} /><span className="flex-1">{label(day.date)}</span><span className="text-sm text-primary">{take === i ? "Taking" : "Take"}</span></button></li>) : null)}</ul>
+        <label className="flex flex-col gap-1 text-sm">Note (optional)<textarea className="rounded-md border bg-background p-2" rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></label>
+        <div className="rounded-lg border bg-[var(--ward-surface)] p-3 text-sm"><b>The swap</b><ul className="mt-1 list-disc ps-5">{cells().map((c, i) => <li key={i}>{c.hospital_id === me.hospital_id ? "You" : colleague.full_name}, {label(c.date)}: {c.shift || "off"}</li>)}</ul></div>
+        {refusal.map((message) => <p key={message as string} role="alert" className="text-sm text-destructive">{message}</p>)}
+        <div className="flex gap-2"><Button variant="outline" onClick={reset}>Start again</Button><Button disabled={pending} onClick={() => send(cells(), note)}>Propose the swap</Button></div></>}
+    </section>
+  )
+}
+
+function StripSwap({ composer, onProposed }: { composer: SwapComposer; onProposed: (message: string) => void }) {
+  const me = composer.nurses.find((nurse) => nurse.me)!
+  const others = composer.nurses.filter((nurse) => !nurse.me)
+  const [who, setWho] = useState(others[0]?.hospital_id ?? "")
+  const [picked, setPicked] = useState<Set<number>>(new Set())
+  const [note, setNote] = useState("")
+  const reset = () => { setPicked(new Set()); setNote("") }
+  const { send, pending, refusal } = useSwapPropose(composer, onProposed, reset)
+  const colleague = others.find((nurse) => nurse.hospital_id === who)
+  const toggle = (i: number) => setPicked((now) => { const next = new Set(now); if (next.has(i)) next.delete(i); else next.add(i); return next })
+  const cells = (): Cell[] => colleague ? [...picked].sort((a, b) => a - b).flatMap((i) => [
+    { hospital_id: me.hospital_id, date: composer.days[i].date, shift: colleague.shifts[i] }, { hospital_id: colleague.hospital_id, date: composer.days[i].date, shift: me.shifts[i] }]) : []
+  return (
+    <section className="flex flex-col gap-3">
+      <h2 className="font-semibold">Propose a swap</h2>
+      <label className="flex flex-col gap-1 text-sm">Swap with<select className="min-h-11 rounded-md border bg-background px-2" value={who} onChange={(e) => { setWho(e.target.value); reset() }}>{others.map((nurse) => <option key={nurse.hospital_id} value={nurse.hospital_id}>{nurse.full_name}</option>)}</select></label>
+      <p className="text-sm text-muted-foreground">Tap the days to exchange: your cell and theirs trade places.</p>
+      <div className="overflow-x-auto rounded-lg border bg-[var(--ward-surface)]">
+        <table className="border-separate border-spacing-0 text-xs"><tbody>
+          <tr><th className="sticky start-0 bg-[var(--ward-surface)] px-2 text-start font-medium">Day</th>{composer.days.map((day) => <td key={day.date} className="px-0.5 pt-1 text-center text-muted-foreground tabular-nums">{Number(day.date.slice(8))}</td>)}</tr>
+          {[me, colleague].map((nurse) => nurse && (
+            <tr key={nurse.hospital_id}><th className="sticky start-0 max-w-20 truncate bg-[var(--ward-surface)] px-2 text-start font-medium">{nurse.me ? "You" : nurse.full_name.split(" ")[0]}</th>
+              {composer.days.map((day, i) => <td key={day.date} className="p-0.5"><button type="button" onClick={() => toggle(i)} aria-pressed={picked.has(i)} aria-label={`${label(day.date)}: exchange`}
+                className={cn("grid size-9 place-items-center rounded-[5px] font-bold", picked.has(i) ? "bg-primary text-primary-foreground" : nurse.shifts[i] ? "bg-accent text-primary" : "text-muted-foreground")}>
+                {picked.has(i) ? (nurse.me ? colleague!.shifts[i] || "–" : me.shifts[i] || "–") : nurse.shifts[i] || "–"}</button></td>)}</tr>))}
+        </tbody></table>
+      </div>
+      {picked.size > 0 && <>
+        <p className="text-sm">{picked.size} day{picked.size > 1 ? "s" : ""} exchanged. The highlighted cells show what each of you would work.</p>
+        <label className="flex flex-col gap-1 text-sm">Note (optional)<textarea className="rounded-md border bg-background p-2" rows={2} value={note} onChange={(e) => setNote(e.target.value)} /></label>
+        {refusal.map((message) => <p key={message as string} role="alert" className="text-sm text-destructive">{message}</p>)}
+        <div className="flex gap-2"><Button variant="outline" onClick={reset}>Clear</Button><Button disabled={pending} onClick={() => send(cells(), note)}>Propose the swap</Button></div></>}
+    </section>
   )
 }

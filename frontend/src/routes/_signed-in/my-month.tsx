@@ -12,8 +12,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { dayRange, fullDay, hospitalTime, monthName, scrollableRegion } from "@/lib/utils"
 import { onlyFor } from "@/session"
+import { PhoneShell, type PhoneVariant } from "@/components/phone-shell-prototype"
+import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react"
+import { useState, type ReactNode } from "react"
+import { cn } from "@/lib/utils"
 
-const searchSchema = z.object({ month: monthInAddress })
+const searchSchema = z.object({ month: monthInAddress, variant: z.enum(["a", "b", "c"]).optional().catch(undefined) })
 
 /** A nurse's own month: their hours and shifts in the roster in force, and their leave with its type. A manager with a nurse
  *  profile reads theirs here too. */
@@ -141,6 +145,8 @@ function MyMonthPage() {
   const mine = useGetMyMonth(params, { query: { placeholderData: keepPreviousData } })
   const leave = useGetMyLeave(params, { query: { placeholderData: keepPreviousData } })
   const shown = mine.data?.month ?? leave.data?.month
+  const { variant } = Route.useSearch() as { variant?: PhoneVariant }
+  if (variant && user.role === Role.staff_nurse) return <MyMonthPrototype variant={variant} month={month} mine={mine.data} leave={leave.data} />
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
@@ -189,4 +195,82 @@ function MyMonthPage() {
       </Card>
     </div>
   )
+}
+
+/* PROTOTYPE (Staff Nurse phone, My month): the same sections three ways at phone width.
+   A "Long scroll"  hours as four tiles on top, then requests, preferences, leave and skills as cards
+   B "Tabs"         a segmented control: Hours, Requests, Leave, Skills; one shown at a time
+   C "Summary"      an hours bar, then one row per section with its state in a line; a row opens the section, with Back */
+const MONTH_NAMES: Record<PhoneVariant, string> = { a: "Long scroll", b: "Tabs", c: "Summary" }
+
+function HoursTiles({ mine }: { mine?: MyMonth }) {
+  const h = mine?.roster?.hours
+  if (!h) return <p className="text-sm text-muted-foreground">No approved roster this month yet.</p>
+  const tiles: [string, string][] = [["Worked", `${h.worked} h`], ["Asked of you", h.owed === null ? "–" : `${h.owed} h`], ["Overtime", `${h.overtime} h`], ["Carried", h.carried === null ? "–" : carried(h.carried)]]
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {tiles.map(([label, value]) => <div key={label} className="rounded-lg border bg-[var(--ward-surface)] p-3"><b className="block text-lg tabular-nums">{value}</b><span className="text-xs text-muted-foreground">{label}</span></div>)}
+    </div>
+  )
+}
+
+function HoursBar({ mine }: { mine?: MyMonth }) {
+  const h = mine?.roster?.hours
+  if (!h) return <p className="text-sm text-muted-foreground">No approved roster this month yet.</p>
+  const owed = h.owed ?? h.worked
+  const pct = Math.min(100, ((h.worked + h.leave_credit) / Math.max(owed + h.leave_credit, 1)) * 100)
+  return (
+    <section className="rounded-xl border bg-[var(--ward-surface)] p-4">
+      <div className="flex items-baseline gap-2"><b className="text-2xl tabular-nums">{h.worked} h</b><span className="text-sm text-muted-foreground">of {owed} h asked{h.leave_credit ? `, ${h.leave_credit} h leave credit` : ""}</span></div>
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full bg-primary" style={{ width: `${pct}%` }} /></div>
+      <p className="mt-2 text-sm text-muted-foreground tabular-nums">{h.overtime ? `${h.overtime} h overtime · ` : ""}{h.carried === null ? "" : `Carried: ${carried(h.carried)}`}</p>
+      <p className="mt-1 text-sm">{h.shifts.map((s) => `${s.count} ${s.display_name}`).join(" · ")}</p>
+    </section>
+  )
+}
+
+function MyMonthPrototype({ variant, month, mine, leave }: { variant: PhoneVariant; month?: string; mine?: MyMonth; leave?: { month: string; runs: { first: string; last: string; days: number; leave_type: string }[] } }) {
+  const [tab, setTab] = useState("hours")
+  const [open, setOpen] = useState<string | null>(null)
+  const leaveDays = leave?.runs.reduce((n, run) => n + run.days, 0) ?? 0
+  const leaveList = leave && (leave.runs.length === 0 ? <p className="text-sm text-muted-foreground">No leave in {monthName(leave.month)}.</p> : (
+    <ul className="flex flex-col divide-y rounded-lg border bg-[var(--ward-surface)]">{leave.runs.map((run) => <li key={run.first} className="flex items-center gap-2 px-3 py-2.5 text-sm"><span className="flex-1 tabular-nums">{dayRange(run.first, run.last)}</span><span className="text-muted-foreground">{run.leave_type} · {run.days} d</span></li>)}</ul>))
+  const sections: [string, string, string, ReactNode][] = [
+    ["hours", "Hours and shifts", mine?.roster?.hours ? `${mine.roster.hours.worked} h worked` : "No roster yet", mine ? <Hours answer={mine} /> : null],
+    ["requests", "Requests", "Ask for shifts or days off", <MyRequestsCard month={month} />],
+    ["preferences", "Preferences", "What you would rather work", <MyPreferencesCard month={month} />],
+    ["leave", "Leave", leaveDays ? `${leaveDays} days this month` : "None this month", leaveList],
+    ["skills", "Skills and licences", "What you hold, and when each lapses", <MySkillsCard />],
+  ]
+  const monthLine = <p className="text-sm text-muted-foreground">{mine ? monthName(mine.month) : ""}{mine?.unit ? ` · ${mine.unit}` : ""}</p>
+  let body: ReactNode
+  if (variant === "a") body = (
+    <div className="flex flex-col gap-4 p-4">{monthLine}{mine && <ProbationCard answer={mine} />}<HoursTiles mine={mine} />
+      {sections.slice(1).map(([key, title, , content]) => <section key={key} className="flex flex-col gap-2"><h2 className="text-sm font-semibold">{title}</h2>{content}</section>)}</div>
+  )
+  else if (variant === "b") {
+    const tabs: [string, string][] = [["hours", "Hours"], ["requests", "Requests"], ["leave", "Leave"], ["skills", "Skills"]]
+    body = (
+      <div className="flex flex-col gap-3 p-4">{monthLine}
+        <div role="tablist" className="grid grid-cols-4 gap-1 rounded-lg bg-muted p-1">{tabs.map(([key, label]) => (
+          <button key={key} role="tab" type="button" aria-selected={tab === key} onClick={() => setTab(key)} className={cn("min-h-9 rounded-md text-sm text-muted-foreground", tab === key && "bg-[var(--ward-surface)] font-medium text-foreground shadow-sm")}>{label}</button>))}</div>
+        {tab === "hours" && <>{mine && <ProbationCard answer={mine} />}<HoursTiles mine={mine} />{sections[0][3]}</>}
+        {tab === "requests" && <>{sections[1][3]}{sections[2][3]}</>}
+        {tab === "leave" && leaveList}
+        {tab === "skills" && sections[4][3]}
+      </div>
+    )
+  }
+  else {
+    const chosen = sections.find(([key]) => key === open)
+    body = chosen ? (
+      <div className="flex flex-col gap-3 p-4"><button type="button" onClick={() => setOpen(null)} className="flex items-center gap-1 self-start text-sm font-medium text-primary"><ChevronLeftIcon className="size-4" />My month</button><h2 className="text-lg font-semibold">{chosen[1]}</h2>{chosen[3]}</div>
+    ) : (
+      <div className="flex flex-col gap-4 p-4">{monthLine}{mine && <ProbationCard answer={mine} />}<HoursBar mine={mine} />
+        <ul className="flex flex-col divide-y rounded-lg border bg-[var(--ward-surface)]">{sections.slice(1).map(([key, title, line]) => (
+          <li key={key}><button type="button" onClick={() => setOpen(key)} className="flex min-h-14 w-full items-center gap-2 px-3 py-2.5 text-start"><span className="min-w-0 flex-1"><b className="block font-medium">{title}</b><span className="block text-sm text-muted-foreground">{line}</span></span><ChevronRightIcon className="size-4 text-muted-foreground" /></button></li>))}</ul>
+      </div>
+    )
+  }
+  return <PhoneShell title="My month" current="/my-month" variant={variant} names={MONTH_NAMES}>{body}</PhoneShell>
 }
